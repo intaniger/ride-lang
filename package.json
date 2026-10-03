@@ -1,0 +1,37 @@
+{
+    "name": "ride",
+    "version": "0.1.0",
+    "description": "A small pure functional language: a STATE record of numbers in, one number out",
+    "type": "module",
+    "private": true,
+    "engines": {
+        "node": ">=20.10.0"
+    },
+    "main": "./out/index.js",
+    "exports": {
+        ".": {
+            "types": "./out/index.d.ts",
+            "default": "./out/index.js"
+        }
+    },
+    "scripts": {
+        "langium:generate": "langium generate",
+        "langium:watch": "langium generate --watch",
+        "build": "npm run langium:generate && tsc",
+        "clean": "rm -rf out *.tsbuildinfo",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:runtime": "cargo test --manifest-path runtime/Cargo.toml",
+        "build:wasm": "wasm-pack build runtime --release --target web --out-dir ../dist --features wasm",
+        "check": "npm run test && npm run test:runtime"
+    },
+    "dependencies": {
+        "langium": "~4.3.0"
+    },
+    "devDependencies": {
+        "@types/node": "~20.19.42",
+        "langium-cli": "~4.3.0",
+        "typescript": "~5.9.3",
+        "vitest": "~3.2.7"
+    }
+}

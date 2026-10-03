@@ -1,0 +1,11 @@
+{
+    "projectName": "Ride",
+    "languages": [
+        {
+            "id": "ride",
+            "grammar": "src/ride.langium",
+            "fileExtensions": [".ride"]
+        }
+    ],
+    "out": "src/generated"
+}
