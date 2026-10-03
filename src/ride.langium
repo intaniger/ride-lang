@@ -22,9 +22,15 @@ StateDecl:
 StateField:
     name=ID;
 
-// A named function. `main` is the entry point.
+// A named function. Zero parameters is the normal shape for an entry point.
+//
+// Parameters are written bare and juxtaposed, which does NOT make the language curried:
+// this is declaration syntax, and a call site always uses parentheses.
 FunDecl:
-    'let' name=ID '=' body=Expression;
+    'let' name=ID (params+=Param)* '=' body=Expression;
+
+Param:
+    name=ID;
 
 Expression:
     LetIn;

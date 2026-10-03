@@ -141,7 +141,8 @@ describe('operators', () => {
 });
 
 describe('implicit multiplication', () => {
-    // A number next to a term means multiplication.
+    // Legal only because the language is first-order: application is always parenthesised,
+    // so a number next to a term can only mean multiplication.
     test('a number next to a parenthesised term', async () => {
         expect(run(await build('let main = 4(2 + 3)'))).toBe(20);
     });
@@ -352,6 +353,131 @@ describe('let … in', () => {
     });
 });
 
+// ── functions ───────────────────────────────────────────────────────────────────
+
+describe('functions', () => {
+    test('a direct call passes arguments through the frame', async () => {
+        const b = await build(`
+            let double a = a * 2
+            let main = double(21)
+        `);
+        expect(run(b)).toBe(42);
+        // main is laid out first, because the runtime starts at funcs[0].
+        expect(b.funcs[0].name).toBe('main');
+        const call = b.code.find((o) => o.op === 'Call');
+        expect(call).toEqual({
+            op: 'Call',
+            target: b.funcs.find((f) => f.name === 'double')!.entry,
+            arity: 1,
+            fpDelta: 0, // main has no frame of its own
+        });
+    });
+
+    test('functions compose, and nesting is two deep', async () => {
+        const b = await build(`
+            let inner x = x + 1
+            let outer x = inner(x) * 10
+            let main = outer(4)
+        `);
+        expect(run(b)).toBe(50);
+    });
+
+    test('fpDelta is the caller frame size, so a caller with locals offsets the callee', async () => {
+        const b = await build(`
+            let twice a = a + a
+            let main = let k = 5 in twice(k)
+        `);
+        expect(run(b)).toBe(10);
+        const call = b.code.find((o) => o.op === 'Call');
+        expect(call && 'fpDelta' in call && call.fpDelta).toBe(1);
+    });
+
+    test('a parameter shadows a state field', async () => {
+        const b = await build(`
+            state { s }
+            let f s = s * 2
+            let main = f(10)
+        `);
+        expect(run(b, [999])).toBe(20);
+    });
+
+    test('fpDelta is patched after the whole body, so a later let still counts', async () => {
+        // The call comes before the `let`, and the `let` sits deep in a branch arm.
+        const b = await build(`
+            let id a = a
+            let main = id(1) + (if 1 then let k = 2 in k else 0)
+        `);
+        expect(run(b)).toBe(3);
+        const call = b.code.find((o) => o.op === 'Call');
+        expect(call && 'fpDelta' in call && call.fpDelta).toBe(1);
+    });
+
+    test('a caller reads its own locals after a call returns', async () => {
+        // The return restores fp as well as pc. Without it, `k` would read the callee's
+        // parameter, and the result would be 10 + 1 = 11.
+        const b = await build(`
+            let g a = let t = a * 10 in t
+            let main = let k = 5 in g(1) + k
+        `);
+        expect(run(b)).toBe(15);
+    });
+
+    test('jump targets are rebased into the function that holds them', async () => {
+        const b = await build(`
+            let f x = if x < 0 then 0 else x
+            let main = f(5) + f(-5)
+        `);
+        expect(run(b)).toBe(5);
+        const f = b.funcs.find((g) => g.name === 'f')!;
+        expect(f.entry).toBeGreaterThan(0);
+        for (let i = f.entry; i < f.entry + f.len; i++) {
+            const instr = b.code[i];
+            if (instr.op === 'Jump' || instr.op === 'JumpIfFalse') {
+                expect(instr.target).toBeGreaterThan(i);
+                expect(instr.target).toBeLessThan(f.entry + f.len);
+            }
+        }
+    });
+});
+
+// ── the rules that make the runtime's proofs possible ───────────────────────────
+
+describe('first-order: a function is never a value', () => {
+    test('mentioning a function without calling it is refused', async () => {
+        const errors = await errorsOf(`
+            let g x = x
+            let main = g + 1
+        `);
+        expect(errors[0]).toMatch(/`g` is a function, so it cannot be used as a value/);
+        expect(errors[0]).toMatch(/first-order/);
+    });
+
+    test('calling a parameter is refused', async () => {
+        const errors = await errorsOf(`
+            let apply f = f(1)
+            let main = apply(2)
+        `);
+        expect(errors[0]).toMatch(/`f` is a number, not a function/);
+    });
+
+    test('calling a state field is refused', async () => {
+        const errors = await errorsOf(`
+            state { s }
+            let main = s(1)
+        `);
+        expect(errors[0]).toMatch(/`s` is a number, not a function/);
+    });
+
+    test('a call site always uses parentheses', async () => {
+        // `double 21` is not a call. Bare parameters belong to the declaration only.
+        const errors = await errorsOf(`
+            let double a = a * 2
+            let main = double 21
+        `);
+        expect(errors[0]).toMatch(/`double` is a function, so it cannot be used as a value/);
+    });
+});
+
 describe('diagnostics', () => {
     test('an unknown name', async () => {
         expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);
@@ -361,20 +487,26 @@ describe('diagnostics', () => {
         expect(await errorsOf('let main = nope(1)')).toEqual(['unknown function `nope`']);
     });
 
+    test('a wrong argument count on a user function', async () => {
+        expect(await errorsOf('let f a b = a + b\nlet main = f(1)')).toEqual([
+            '`f` takes 2 argument(s), got 1',
+        ]);
+    });
+
     test('an unknown name inside an expression is one message, not a cascade', async () => {
         // The operators around the rejected name add no message of their own.
         expect(await errorsOf('let main = (nope + 1) * 2')).toEqual(['unknown name `nope`']);
     });
 
     test('a missing entry point', async () => {
-        expect(await errorsOf('let f = 1')).toEqual([
+        expect(await errorsOf('let f a = a')).toEqual([
             'no `let main = …` to start from',
         ]);
     });
 
-    test('a duplicate function', async () => {
-        const errors = await errorsOf('let f = 1\nlet f = 2\nlet main = 3');
-        expect(errors).toContain('duplicate function `f`');
+    test('an entry point with parameters', async () => {
+        const errors = await errorsOf('let main a = a');
+        expect(errors[0]).toMatch(/must have no parameters/);
     });
 
     test('a duplicate state field', async () => {
@@ -382,8 +514,18 @@ describe('diagnostics', () => {
         expect(errors).toContain('duplicate state field `x`');
     });
 
+    test('a duplicate function', async () => {
+        const errors = await errorsOf('let f a = a\nlet f a = a\nlet main = f(1)');
+        expect(errors).toContain('duplicate function `f`');
+    });
+
     test('a syntax error comes back as a diagnostic, not a throw', async () => {
         const errors = await errorsOf('let main = 2 +');
         expect(errors.length).toBeGreaterThan(0);
+    });
+
+    test('a duplicate parameter', async () => {
+        const errors = await errorsOf('let f a a = a\nlet main = f(1, 2)');
+        expect(errors).toContain('duplicate parameter `a` in `f`');
     });
 });

@@ -103,12 +103,14 @@ export interface FunDecl extends langium.AstNode {
     readonly $type: 'FunDecl';
     body: Expression;
     name: string;
+    params: Array<Param>;
 }
 
 export const FunDecl = {
     $type: 'FunDecl',
     body: 'body',
-    name: 'name'
+    name: 'name',
+    params: 'params'
 } as const;
 
 export function isFunDecl(item: unknown): item is FunDecl {
@@ -200,6 +202,21 @@ export function isNumberLiteral(item: unknown): item is NumberLiteral {
     return reflection.isInstance(item, NumberLiteral.$type);
 }
 
+export interface Param extends langium.AstNode {
+    readonly $container: FunDecl;
+    readonly $type: 'Param';
+    name: string;
+}
+
+export const Param = {
+    $type: 'Param',
+    name: 'name'
+} as const;
+
+export function isParam(item: unknown): item is Param {
+    return reflection.isInstance(item, Param.$type);
+}
+
 export interface Program extends langium.AstNode {
     readonly $type: 'Program';
     declarations: Array<Declaration>;
@@ -270,6 +287,7 @@ export type RideAstType = {
     LetIn: LetIn
     Negate: Negate
     NumberLiteral: NumberLiteral
+    Param: Param
     Program: Program
     Ref: Ref
     StateDecl: StateDecl
@@ -327,6 +345,11 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 },
                 name: {
                     name: FunDecl.name
+                },
+                params: {
+                    name: FunDecl.params,
+                    defaultValue: [],
+                    optional: true
                 }
             },
             superTypes: [Declaration.$type]
@@ -390,6 +413,15 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [Expression.$type]
+        },
+        Param: {
+            name: Param.$type,
+            properties: {
+                name: {
+                    name: Param.name
+                }
+            },
+            superTypes: []
         },
         Program: {
             name: Program.$type,

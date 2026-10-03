@@ -1,13 +1,14 @@
 // The compiler: a `ride` source file becomes bytecode for a stack machine.
 //
 // Every error in this language is a compile-time error, so the compiler returns diagnostics
-// and never throws on bad input. Three stages so far:
+// and never throws on bad input. Four stages so far:
 //
-//   1. collect    gather the functions and find the entry point
-//   2. emit       walk each function body to postfix
-//   3. link       lay the functions out, entry point first
+//   1. collect    gather the state record, the functions, and their parameters
+//   2. check      names, arity, and the first-order rule
+//   3. emit       walk each function body to postfix, with jump placeholders
+//   4. link       lay the functions out, then patch call targets and jump offsets
 //
-// Stage 2 does NOT simplify the arithmetic. The shape the author wrote is the shape that runs.
+// Stage 3 does NOT simplify the arithmetic. The shape the author wrote is the shape that runs.
 // That is deliberate: an algebraic simplifier reassociates, `f32` addition is not associative,
 // and a reader comparing source to behaviour would have to account for the difference.
 
@@ -37,6 +38,7 @@ export type Op =
     | { op: 'LoadState'; index: number }
     | { op: 'LoadLocal'; index: number }
     | { op: 'StoreLocal'; index: number }
+    | { op: 'Call'; target: number; arity: number; fpDelta: number }
     | { op: 'Jump'; target: number }
     | { op: 'JumpIfFalse'; target: number }
     | { op: Nullary };
@@ -53,6 +55,7 @@ export interface Func {
     name: string;
     entry: number;
     len: number;
+    arity: number;
     frame: number;
 }
 
@@ -134,21 +137,27 @@ export function compile(ast: AstProgram): CompileResult {
     const byName = new Map<string, FunDecl>();
     for (const f of funcs) if (!byName.has(f.name)) byName.set(f.name, f);
 
-    if (!byName.has(ENTRY_NAME)) {
+    const entry = byName.get(ENTRY_NAME);
+    if (!entry) {
         errors.push({ message: `no \`let ${ENTRY_NAME} = …\` to start from` });
+    } else if (entry.params.length > 0) {
+        errors.push({
+            message: `\`${ENTRY_NAME}\` takes its input from \`state\`, so it must have no parameters`,
+            at: ENTRY_NAME,
+        });
     }
 
     if (errors.length > 0) return { ok: false, errors };
 
-    // ── 2. emit, one walk per function ──────────────────────────────────────
-    const emitted = new Map<string, { code: Op[]; frame: number }>();
+    // ── 2 + 3. check and emit, one walk per function ────────────────────────
+    const emitted = new Map<string, { code: Op[]; frame: number; arity: number }>();
     for (const f of funcs) {
-        const out = emitFunction(f, stateFields, errors);
+        const out = emitFunction(f, stateFields, byName, errors);
         emitted.set(f.name, out);
     }
     if (errors.length > 0) return { ok: false, errors };
 
-    // ── 3. link ─────────────────────────────────────────────────────────────
+    // ── 4. link ─────────────────────────────────────────────────────────────
     // The entry function goes first, because evaluation starts at `funcs[0]`.
     const order = [ENTRY_NAME, ...funcs.map((f) => f.name).filter((n) => n !== ENTRY_NAME)];
 
@@ -156,9 +165,10 @@ export function compile(ast: AstProgram): CompileResult {
     let cursor = 0;
     for (const name of order) {
         const e = emitted.get(name)!;
-        layout.push({ name, entry: cursor, len: e.code.length, frame: e.frame });
+        layout.push({ name, entry: cursor, len: e.code.length, arity: e.arity, frame: e.frame });
         cursor += e.code.length;
     }
+    const entryOf = new Map(layout.map((f) => [f.name, f.entry]));
 
     const code: Op[] = [];
     for (const f of layout) {
@@ -167,6 +177,15 @@ export function compile(ast: AstProgram): CompileResult {
             if (instr.op === 'Jump' || instr.op === 'JumpIfFalse') {
                 // Jump targets are emitted relative to the function, then rebased.
                 code.push({ ...instr, target: instr.target + f.entry });
+            } else if (instr.op === 'Call') {
+                // `target` holds a placeholder index into `order`; swap it for the entry.
+                const calleeName = order[instr.target];
+                code.push({
+                    op: 'Call',
+                    target: entryOf.get(calleeName)!,
+                    arity: instr.arity,
+                    fpDelta: instr.fpDelta,
+                });
             } else {
                 code.push(instr);
             }
@@ -184,17 +203,29 @@ export function compile(ast: AstProgram): CompileResult {
     };
 }
 
-/** Compile one function body. */
+/** Compile one function body. Jump targets are function-relative; `link` rebases them. */
 function emitFunction(
     f: FunDecl,
     stateFields: string[],
+    byName: Map<string, FunDecl>,
     errors: Diagnostic[],
-): { code: Op[]; frame: number } {
+): { code: Op[]; frame: number; arity: number } {
     const code: Op[] = [];
 
-    // Frame layout: one slot per `let`, in source order.
+    // Frame layout: parameters first, then one slot per `let` in source order.
     const slots = new Map<string, number>();
-    let frame = 0;
+    f.params.forEach((p, i) => slots.set(p.name, i));
+    let frame = f.params.length;
+
+    duplicates(f.params.map((p) => p.name)).forEach((n) =>
+        errors.push({ message: `duplicate parameter \`${n}\` in \`${f.name}\``, at: f.name }),
+    );
+
+    /** Order is the declaration order of `order` in `compile`; resolved in `link`. */
+    const callPlaceholder = (name: string): number => {
+        const names = [ENTRY_NAME, ...[...byName.keys()].filter((n) => n !== ENTRY_NAME)];
+        return names.indexOf(name);
+    };
 
     const walk = (e: Expression): void => {
         if (isNumberLiteral(e)) {
@@ -214,8 +245,20 @@ function emitFunction(
                 code.push({ op: 'LoadState', index: field });
                 return;
             }
+            if (byName.has(e.name)) {
+                // The first-order rule. A function has no value, so it cannot be mentioned
+                // except in a call.
+                errors.push({
+                    message:
+                        `\`${e.name}\` is a function, so it cannot be used as a value. ` +
+                        'ride is first-order: write `' + e.name + '(…)` to call it.',
+                    at: e.name,
+                });
+                code.push({ op: 'Push', value: 0 }); // keep the stack shape for later checks
+                return;
+            }
             errors.push({ message: `unknown name \`${e.name}\``, at: e.name });
-            code.push({ op: 'Push', value: 0 }); // keep the stack shape for later checks
+            code.push({ op: 'Push', value: 0 });
             return;
         }
 
@@ -290,8 +333,35 @@ function emitFunction(
                 return;
             }
 
-            errors.push({ message: `unknown function \`${e.callee}\``, at: e.callee });
-            code.push({ op: 'Push', value: 0 });
+            const callee = byName.get(e.callee);
+            if (!callee) {
+                // A parameter or local with this name is a value, not a function.
+                if (slots.has(e.callee) || stateFields.includes(e.callee)) {
+                    errors.push({
+                        message:
+                            `\`${e.callee}\` is a number, not a function. ` +
+                            'ride is first-order, so only a declared function can be called.',
+                        at: e.callee,
+                    });
+                } else {
+                    errors.push({ message: `unknown function \`${e.callee}\``, at: e.callee });
+                }
+                code.push({ op: 'Push', value: 0 });
+                return;
+            }
+            if (e.args.length !== callee.params.length) {
+                errors.push({
+                    message: `\`${e.callee}\` takes ${callee.params.length} argument(s), got ${e.args.length}`,
+                    at: e.callee,
+                });
+            }
+            e.args.forEach(walk);
+            code.push({
+                op: 'Call',
+                target: callPlaceholder(e.callee),
+                arity: callee.params.length,
+                fpDelta: 0, // the caller's own frame size; filled in below, once it is final
+            });
             return;
         }
 
@@ -301,7 +371,13 @@ function emitFunction(
     walk(f.body);
     code.push({ op: 'Ret' });
 
-    return { code, frame };
+    // `fpDelta` is the caller's frame size, which is only final once the whole body is walked
+    // (a `let` deep in a branch can still widen the window).
+    for (const instr of code) {
+        if (instr.op === 'Call') instr.fpDelta = frame;
+    }
+
+    return { code, frame, arity: f.params.length };
 }
 
 function patch(code: Op[], at: number, target: number): void {

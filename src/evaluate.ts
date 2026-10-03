@@ -34,11 +34,13 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
     const code = bytecode.code;
     const stack: number[] = [];
     const frame: number[] = [];
+    const calls: { pc: number; fp: number }[] = [];
 
+    let fp = 0;
     let pc = bytecode.funcs[0].entry;
-    // A step ceiling. The compiler emits forward jumps only, so a compiled program always ends.
-    // This evaluator is a reference and may be handed other bytecode, so it guards instead of
-    // trusting.
+    // A step ceiling. Jumps only go forward, but until the compiler rejects recursion a program
+    // can call itself forever. This evaluator may also be handed bytecode that did not come from
+    // the compiler, so it guards instead of trusting.
     let steps = 0;
     const LIMIT = 1_000_000;
 
@@ -56,11 +58,11 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
                 pc++;
                 break;
             case 'LoadLocal':
-                stack.push(frame[instr.index]);
+                stack.push(frame[fp + instr.index]);
                 pc++;
                 break;
             case 'StoreLocal':
-                frame[instr.index] = stack.pop()!;
+                frame[fp + instr.index] = stack.pop()!;
                 pc++;
                 break;
 
@@ -130,8 +132,21 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
                 pc = stack.pop() === 0 ? instr.target : pc + 1;
                 break;
 
-            case 'Ret':
-                return stack[0];
+            case 'Call': {
+                const args = stack.splice(stack.length - instr.arity, instr.arity);
+                calls.push({ pc: pc + 1, fp });
+                fp += instr.fpDelta;
+                args.forEach((v, i) => (frame[fp + i] = v));
+                pc = instr.target;
+                break;
+            }
+            case 'Ret': {
+                const back = calls.pop();
+                if (!back) return stack[0];
+                pc = back.pc;
+                fp = back.fp;
+                break;
+            }
 
             default: {
                 const never: never = instr;
