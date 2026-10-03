@@ -1,0 +1,27 @@
+[package]
+name = "ride-runtime"
+version = "0.1.0"
+edition = "2024"
+description = "Verifier and evaluator for compiled ride programs"
+publish = false
+
+# No dependencies, deliberately. The runtime parses nothing and allocates nothing per call, so
+# it needs neither a parser nor a collector. `wasm-bindgen` appears only behind the `wasm`
+# feature, so `cargo test` runs on the host with an empty dependency graph.
+[dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+default = []
+# The JS boundary. Off by default so the native test run needs no toolchain beyond cargo.
+wasm = ["wasm-bindgen"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+# One codegen unit so the dispatch loop inlines the arithmetic helpers.
+codegen-units = 1
+# A panic here would mean a proof in `verify` is wrong. Abort rather than carry unwinding
+# machinery into the shipped module.
+panic = "abort"
