@@ -1,0 +1,36 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ride — a small pure functional language over numbers.
+//
+// A program is a set of functions. Evaluating the entry function, `main`, yields one
+// number. There is nothing else: no strings, no collections, no effects, no state
+// carried between calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+grammar Ride
+
+entry Program:
+    (declarations+=FunDecl)*;
+
+// A named function. `main` is the entry point.
+FunDecl:
+    'let' name=ID '=' body=Expression;
+
+Expression:
+    Additive;
+
+Additive infers Expression:
+    Multiplicative ({infer Binary.left=current} operator=('+' | '-') right=Multiplicative)*;
+
+Multiplicative infers Expression:
+    Primary ({infer Binary.left=current} operator=('*' | '/') right=Primary)*;
+
+Primary infers Expression:
+    {infer NumberLiteral} value=NUMBER
+    | '(' Expression ')';
+
+hidden terminal WS: /\s+/;
+hidden terminal ML_COMMENT: /\/\*[\s\S]*?\*\//;
+hidden terminal SL_COMMENT: /\/\/[^\n\r]*/;
+
+terminal NUMBER returns number: /[0-9]+(\.[0-9]+)?/;
+terminal ID: /[_a-zA-Z][\w_]*/;
