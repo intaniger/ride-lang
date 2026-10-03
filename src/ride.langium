@@ -4,6 +4,32 @@
 // A program declares a STATE record and a set of functions. Evaluating the entry
 // function against one STATE record yields one number. There is nothing else: no
 // strings, no collections, no effects, no state carried between calls.
+//
+// Four properties are load-bearing. Each one buys something the runtime depends on,
+// and breaking any of them invalidates a proof in `runtime/src/verify.rs`.
+//
+//   FIRST-ORDER      A function is never a value. There is no lambda, and a parameter
+//                    is always a number. So every call site is known and saturated,
+//                    there is no closure to allocate, and no indirect call.
+//
+//   STRICT           Operands are evaluated before the operation that consumes them.
+//                    The reading order is the evaluation order.
+//
+//   NO RECURSION     The call graph is acyclic. This is what lets the frame array be
+//                    sized at compile time. `verify` rejects a cycle, so the rule is
+//                    checked rather than merely documented.
+//
+//   TOTAL BRANCHES   Every `if` has an `else`. A branch therefore always produces a
+//                    value, and both arms leave the operand stack at the same height.
+//
+// ── one consequence worth stating ───────────────────────────────────────────
+//
+// IMPLICIT MULTIPLICATION is legal: `15exp(-x)` and `4.9(t^2)` mean multiplication.
+// This is unambiguous ONLY because the language is first-order. Application is always
+// written with parentheses, `f(a, b)`, so juxtaposition can have no other meaning.
+//
+// Adding curried application (`f a b` as a call) would make `15exp(x)` ambiguous and
+// break every program that relies on the shorthand. Do not add it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 grammar Ride
@@ -55,7 +81,6 @@ IfElse infers Expression:
 Comparison infers Expression:
     Additive ({infer Binary.left=current} operator=('<=' | '>=' | '==' | '<' | '>') right=Additive)?;
 
-
 Additive infers Expression:
     Multiplicative ({infer Binary.left=current} operator=('+' | '-') right=Multiplicative)*;
 
@@ -70,7 +95,7 @@ Unary infers Expression:
     {infer Negate} '-' operand=Unary
     | Juxtaposition;
 
-// Implicit multiplication: `4(2 + 3)` and `0.6133x` mean multiplication.
+// Implicit multiplication. See the header: sound only because the language is first-order.
 Juxtaposition infers Expression:
     Primary ({infer ImplicitMul.left=current} right=Primary)*;
 
