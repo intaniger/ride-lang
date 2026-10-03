@@ -594,3 +594,54 @@ describe('diagnostics', () => {
         expect(errors).toContain('duplicate parameter `a` in `f`');
     });
 });
+
+// ── a worked program ────────────────────────────────────────────────────────────
+
+describe('a four-arm piecewise function', () => {
+    // The shape this language exists to express: a piecewise function of one state field,
+    // with three ascending breakpoints and a transcendental in only one arm.
+    const source = `
+        state { s }
+
+        // Shared by more than one arm, so it is a named function rather than a repeated term.
+        let phase x = 0.6133x - 220.788
+
+        let main =
+            if s < 345 then 350.1
+            else if s < 360 then 0.9267s + 30.3885
+            else if s < 570 then s + 5 - cos(phase(s))
+            else 1.2933s - 161.181
+    `;
+
+    test('each arm is selected on its own interval', async () => {
+        const b = await build(source);
+        expect(run(b, [344.99])).toBeCloseTo(350.1, 4);
+        expect(run(b, [350])).toBeCloseTo(354.7335, 3);
+        // Arm 3, the one with the cosine. Measured 404.17508 in f32; real arithmetic gives
+        // 404.175083. A tolerance of 5e-4 covers that, and no other arm comes near it:
+        // at s = 400 arm 2 gives 401.07 and arm 4 gives 356.14.
+        expect(run(b, [400])).toBeCloseTo(404.1751, 3);
+        expect(run(b, [700])).toBeCloseTo(744.129, 2);
+    });
+
+    test('the arms very nearly meet at each breakpoint', async () => {
+        // The author tunes the constants so the function is continuous. They meet in real
+        // arithmetic, not in f32, so each boundary carries a step of about 1e-4.
+        const b = await build(source);
+        for (const edge of [345, 360, 570]) {
+            const below = run(b, [edge - 0.001]);
+            const above = run(b, [edge + 0.001]);
+            expect(Math.abs(above - below)).toBeLessThan(1e-2);
+        }
+    });
+
+    test('the transcendental is only reached on its own arm', async () => {
+        // Below 345 the program takes four instructions and a Ret, so the cosine in the third
+        // arm is never evaluated. That is the whole difference from a branchless blend.
+        const b = await build(source);
+        const cosAt = b.code.findIndex((o) => o.op === 'Cos');
+        expect(cosAt).toBeGreaterThan(0);
+        const firstJump = b.code.find((o) => o.op === 'JumpIfFalse');
+        expect(firstJump && 'target' in firstJump && firstJump.target).toBeLessThan(cosAt);
+    });
+});
