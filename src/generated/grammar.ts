@@ -126,7 +126,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@15"
+            "$ref": "#/rules@16"
           },
           "arguments": []
         }
@@ -152,7 +152,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@15"
+                "$ref": "#/rules@16"
               },
               "arguments": []
             }
@@ -441,6 +441,56 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
     },
     {
       "$type": "ParserRule",
+      "name": "Juxtaposition",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@11"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Action",
+                "inferredType": {
+                  "$type": "InferredType",
+                  "name": "ImplicitMul"
+                },
+                "feature": "left",
+                "operator": "="
+              },
+              {
+                "$type": "Assignment",
+                "feature": "right",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              }
+            ],
+            "cardinality": "*"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
       "name": "Primary",
       "inferredType": {
         "$type": "InferredType",
@@ -466,7 +516,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@14"
+                    "$ref": "#/rules@15"
                   },
                   "arguments": []
                 }
@@ -490,7 +540,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@15"
+                    "$ref": "#/rules@16"
                   },
                   "arguments": []
                 }

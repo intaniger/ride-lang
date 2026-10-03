@@ -20,6 +20,7 @@ import type {
 import {
     isBinary,
     isFunDecl,
+    isImplicitMul,
     isNegate,
     isNumberLiteral,
     isRef,
@@ -164,6 +165,13 @@ function emitFunction(
         if (isNegate(e)) {
             walk(e.operand);
             code.push({ op: 'Neg' });
+            return;
+        }
+
+        if (isImplicitMul(e)) {
+            walk(e.left);
+            walk(e.right);
+            code.push({ op: 'Mul' });
             return;
         }
 

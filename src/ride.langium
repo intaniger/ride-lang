@@ -41,7 +41,11 @@ Power infers Expression:
 
 Unary infers Expression:
     {infer Negate} '-' operand=Unary
-    | Primary;
+    | Juxtaposition;
+
+// Implicit multiplication: `4(2 + 3)` and `0.6133x` mean multiplication.
+Juxtaposition infers Expression:
+    Primary ({infer ImplicitMul.left=current} right=Primary)*;
 
 Primary infers Expression:
     {infer NumberLiteral} value=NUMBER

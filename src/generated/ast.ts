@@ -34,7 +34,7 @@ export type RideKeywordNames =
 export type RideTokenNames = RideTerminalNames | RideKeywordNames;
 
 export interface Binary extends langium.AstNode {
-    readonly $container: Binary | FunDecl | Negate;
+    readonly $container: Binary | FunDecl | ImplicitMul | Negate;
     readonly $type: 'Binary';
     left: Expression;
     operator: '*' | '+' | '-' | '/' | '^';
@@ -62,7 +62,7 @@ export function isDeclaration(item: unknown): item is Declaration {
     return reflection.isInstance(item, Declaration.$type);
 }
 
-export type Expression = Binary | Negate | NumberLiteral | Ref;
+export type Expression = Binary | ImplicitMul | Negate | NumberLiteral | Ref;
 
 export const Expression = {
     $type: 'Expression'
@@ -89,8 +89,25 @@ export function isFunDecl(item: unknown): item is FunDecl {
     return reflection.isInstance(item, FunDecl.$type);
 }
 
+export interface ImplicitMul extends langium.AstNode {
+    readonly $container: Binary | FunDecl | ImplicitMul | Negate;
+    readonly $type: 'ImplicitMul';
+    left: Expression;
+    right: Expression;
+}
+
+export const ImplicitMul = {
+    $type: 'ImplicitMul',
+    left: 'left',
+    right: 'right'
+} as const;
+
+export function isImplicitMul(item: unknown): item is ImplicitMul {
+    return reflection.isInstance(item, ImplicitMul.$type);
+}
+
 export interface Negate extends langium.AstNode {
-    readonly $container: Binary | FunDecl | Negate;
+    readonly $container: Binary | FunDecl | ImplicitMul | Negate;
     readonly $type: 'Negate';
     operand: Expression;
 }
@@ -105,7 +122,7 @@ export function isNegate(item: unknown): item is Negate {
 }
 
 export interface NumberLiteral extends langium.AstNode {
-    readonly $container: Binary | FunDecl | Negate;
+    readonly $container: Binary | FunDecl | ImplicitMul | Negate;
     readonly $type: 'NumberLiteral';
     value: number;
 }
@@ -134,7 +151,7 @@ export function isProgram(item: unknown): item is Program {
 }
 
 export interface Ref extends langium.AstNode {
-    readonly $container: Binary | FunDecl | Negate;
+    readonly $container: Binary | FunDecl | ImplicitMul | Negate;
     readonly $type: 'Ref';
     name: string;
 }
@@ -183,6 +200,7 @@ export type RideAstType = {
     Declaration: Declaration
     Expression: Expression
     FunDecl: FunDecl
+    ImplicitMul: ImplicitMul
     Negate: Negate
     NumberLiteral: NumberLiteral
     Program: Program
@@ -231,6 +249,18 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [Declaration.$type]
+        },
+        ImplicitMul: {
+            name: ImplicitMul.$type,
+            properties: {
+                left: {
+                    name: ImplicitMul.left
+                },
+                right: {
+                    name: ImplicitMul.right
+                }
+            },
+            superTypes: [Expression.$type]
         },
         Negate: {
             name: Negate.$type,

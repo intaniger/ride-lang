@@ -125,6 +125,46 @@ describe('operators', () => {
     });
 });
 
+describe('implicit multiplication', () => {
+    // A number next to a term means multiplication.
+    test('a number next to a parenthesised term', async () => {
+        expect(run(await build('let main = 4(2 + 3)'))).toBe(20);
+    });
+
+    test('compiles to an ordinary multiply', async () => {
+        const b = await build('let main = 3(4)');
+        expect(b.code).toEqual([
+            { op: 'Push', value: 3 },
+            { op: 'Push', value: 4 },
+            { op: 'Mul' },
+            { op: 'Ret' },
+        ]);
+    });
+
+    test('a number next to a name reads the way it was written down', async () => {
+        const juxtaposed = await build('state { x }\nlet main = 0.6133x - 220.788');
+        const explicit = await build('state { x }\nlet main = 0.6133 * x - 220.788');
+        expect(juxtaposed.code).toEqual(explicit.code);
+        expect(run(juxtaposed, [400])).toBe(run(explicit, [400]));
+    });
+
+    test('a juxtaposed pair is one operand of a power', async () => {
+        // (2x)^2 = 36 at x = 3, not 2(x^2) = 18
+        expect(run(await build('state { x }\nlet main = 2x^2'), [3])).toBe(36);
+    });
+
+    test('unary minus applies to the whole product', async () => {
+        // -(2x), so the Neg comes after the Mul. Both groupings give -6, so read the code.
+        expect((await build('state { x }\nlet main = -2x')).code).toEqual([
+            { op: 'Push', value: 2 },
+            { op: 'LoadState', index: 0 },
+            { op: 'Mul' },
+            { op: 'Neg' },
+            { op: 'Ret' },
+        ]);
+    });
+});
+
 describe('diagnostics', () => {
     test('an unknown name', async () => {
         expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);
