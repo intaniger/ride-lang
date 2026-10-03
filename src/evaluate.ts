@@ -13,8 +13,19 @@ const f32 = Math.fround;
 
 export class EvaluateError extends Error {}
 
-/** Run a compiled program and return the one number it computes. */
-export function evaluate(bytecode: Bytecode): number {
+/**
+ * Run a compiled program against one STATE record.
+ *
+ * `state` is indexed by the order of the `state { … }` declaration, which `Bytecode.stateFields`
+ * records by name.
+ */
+export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
+    if (state.length < bytecode.stateArity) {
+        throw new EvaluateError(
+            `state record has ${state.length} field(s), the program needs ${bytecode.stateArity}`,
+        );
+    }
+
     const code = bytecode.code;
     const stack: number[] = [];
 
@@ -26,6 +37,10 @@ export function evaluate(bytecode: Bytecode): number {
         switch (instr.op) {
             case 'Push':
                 stack.push(f32(instr.value));
+                pc++;
+                break;
+            case 'LoadState':
+                stack.push(f32(state[instr.index]));
                 pc++;
                 break;
 

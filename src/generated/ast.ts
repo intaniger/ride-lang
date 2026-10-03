@@ -21,10 +21,14 @@ export type RideKeywordNames =
     | ")"
     | "*"
     | "+"
+    | ","
     | "-"
     | "/"
     | "="
-    | "let";
+    | "let"
+    | "state"
+    | "{"
+    | "}";
 
 export type RideTokenNames = RideTerminalNames | RideKeywordNames;
 
@@ -47,7 +51,17 @@ export function isBinary(item: unknown): item is Binary {
     return reflection.isInstance(item, Binary.$type);
 }
 
-export type Expression = Binary | NumberLiteral;
+export type Declaration = FunDecl | StateDecl;
+
+export const Declaration = {
+    $type: 'Declaration'
+} as const;
+
+export function isDeclaration(item: unknown): item is Declaration {
+    return reflection.isInstance(item, Declaration.$type);
+}
+
+export type Expression = Binary | NumberLiteral | Ref;
 
 export const Expression = {
     $type: 'Expression'
@@ -91,7 +105,7 @@ export function isNumberLiteral(item: unknown): item is NumberLiteral {
 
 export interface Program extends langium.AstNode {
     readonly $type: 'Program';
-    declarations: Array<FunDecl>;
+    declarations: Array<Declaration>;
 }
 
 export const Program = {
@@ -103,12 +117,61 @@ export function isProgram(item: unknown): item is Program {
     return reflection.isInstance(item, Program.$type);
 }
 
+export interface Ref extends langium.AstNode {
+    readonly $container: Binary | FunDecl;
+    readonly $type: 'Ref';
+    name: string;
+}
+
+export const Ref = {
+    $type: 'Ref',
+    name: 'name'
+} as const;
+
+export function isRef(item: unknown): item is Ref {
+    return reflection.isInstance(item, Ref.$type);
+}
+
+export interface StateDecl extends langium.AstNode {
+    readonly $container: Program;
+    readonly $type: 'StateDecl';
+    fields: Array<StateField>;
+}
+
+export const StateDecl = {
+    $type: 'StateDecl',
+    fields: 'fields'
+} as const;
+
+export function isStateDecl(item: unknown): item is StateDecl {
+    return reflection.isInstance(item, StateDecl.$type);
+}
+
+export interface StateField extends langium.AstNode {
+    readonly $container: StateDecl;
+    readonly $type: 'StateField';
+    name: string;
+}
+
+export const StateField = {
+    $type: 'StateField',
+    name: 'name'
+} as const;
+
+export function isStateField(item: unknown): item is StateField {
+    return reflection.isInstance(item, StateField.$type);
+}
+
 export type RideAstType = {
     Binary: Binary
+    Declaration: Declaration
     Expression: Expression
     FunDecl: FunDecl
     NumberLiteral: NumberLiteral
     Program: Program
+    Ref: Ref
+    StateDecl: StateDecl
+    StateField: StateField
 }
 
 export class RideAstReflection extends langium.AbstractAstReflection {
@@ -128,6 +191,12 @@ export class RideAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: [Expression.$type]
         },
+        Declaration: {
+            name: Declaration.$type,
+            properties: {
+            },
+            superTypes: []
+        },
         Expression: {
             name: Expression.$type,
             properties: {
@@ -144,7 +213,7 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                     name: FunDecl.name
                 }
             },
-            superTypes: []
+            superTypes: [Declaration.$type]
         },
         NumberLiteral: {
             name: NumberLiteral.$type,
@@ -162,6 +231,34 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                     name: Program.declarations,
                     defaultValue: [],
                     optional: true
+                }
+            },
+            superTypes: []
+        },
+        Ref: {
+            name: Ref.$type,
+            properties: {
+                name: {
+                    name: Ref.name
+                }
+            },
+            superTypes: [Expression.$type]
+        },
+        StateDecl: {
+            name: StateDecl.$type,
+            properties: {
+                fields: {
+                    name: StateDecl.fields,
+                    defaultValue: []
+                }
+            },
+            superTypes: [Declaration.$type]
+        },
+        StateField: {
+            name: StateField.$type,
+            properties: {
+                name: {
+                    name: StateField.name
                 }
             },
             superTypes: []

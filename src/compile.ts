@@ -11,13 +11,25 @@
 // That is deliberate: an algebraic simplifier reassociates, `f32` addition is not associative,
 // and a reader comparing source to behaviour would have to account for the difference.
 
-import type { Expression, FunDecl, Program as AstProgram } from './generated/ast.js';
-import { isBinary, isNumberLiteral } from './generated/ast.js';
+import type {
+    Expression,
+    FunDecl,
+    Program as AstProgram,
+    StateDecl,
+} from './generated/ast.js';
+import {
+    isBinary,
+    isFunDecl,
+    isNumberLiteral,
+    isRef,
+    isStateDecl,
+} from './generated/ast.js';
 
 // ── the instruction set ─────────────────────────────────────────────────────────
 
 export type Op =
     | { op: 'Push'; value: number }
+    | { op: 'LoadState'; index: number }
     | { op: Nullary };
 
 /** Every operation that carries no immediate. */
@@ -34,6 +46,9 @@ export interface Func {
 export interface Bytecode {
     code: Op[];
     funcs: Func[];
+    stateArity: number;
+    /** Field names in wire order, so a host knows what to write and in which slot. */
+    stateFields: string[];
 }
 
 export interface Diagnostic {
@@ -62,7 +77,16 @@ export function compile(ast: AstProgram): CompileResult {
     const errors: Diagnostic[] = [];
 
     // ── 1. collect ──────────────────────────────────────────────────────────
-    const funcs = ast.declarations;
+    const stateDecls = ast.declarations.filter(isStateDecl) as StateDecl[];
+    if (stateDecls.length > 1) {
+        errors.push({ message: 'more than one `state` declaration' });
+    }
+    const stateFields = stateDecls[0]?.fields.map((f) => f.name) ?? [];
+    duplicates(stateFields).forEach((n) =>
+        errors.push({ message: `duplicate state field \`${n}\``, at: n }),
+    );
+
+    const funcs = ast.declarations.filter(isFunDecl) as FunDecl[];
     duplicates(funcs.map((f) => f.name)).forEach((n) =>
         errors.push({ message: `duplicate function \`${n}\``, at: n }),
     );
@@ -79,7 +103,7 @@ export function compile(ast: AstProgram): CompileResult {
     // ── 2. emit, one walk per function ──────────────────────────────────────
     const emitted = new Map<string, { code: Op[] }>();
     for (const f of funcs) {
-        const out = emitFunction(f, errors);
+        const out = emitFunction(f, stateFields, errors);
         emitted.set(f.name, out);
     }
     if (errors.length > 0) return { ok: false, errors };
@@ -99,16 +123,39 @@ export function compile(ast: AstProgram): CompileResult {
     const code: Op[] = [];
     for (const f of layout) code.push(...emitted.get(f.name)!.code);
 
-    return { ok: true, bytecode: { code, funcs: layout } };
+    return {
+        ok: true,
+        bytecode: {
+            code,
+            funcs: layout,
+            stateArity: stateFields.length,
+            stateFields,
+        },
+    };
 }
 
 /** Compile one function body. */
-function emitFunction(f: FunDecl, errors: Diagnostic[]): { code: Op[] } {
+function emitFunction(
+    f: FunDecl,
+    stateFields: string[],
+    errors: Diagnostic[],
+): { code: Op[] } {
     const code: Op[] = [];
 
     const walk = (e: Expression): void => {
         if (isNumberLiteral(e)) {
             code.push({ op: 'Push', value: e.value });
+            return;
+        }
+
+        if (isRef(e)) {
+            const field = stateFields.indexOf(e.name);
+            if (field >= 0) {
+                code.push({ op: 'LoadState', index: field });
+                return;
+            }
+            errors.push({ message: `unknown name \`${e.name}\``, at: e.name });
+            code.push({ op: 'Push', value: 0 }); // keep the stack shape for later checks
             return;
         }
 

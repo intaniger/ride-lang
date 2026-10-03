@@ -1,15 +1,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ride — a small pure functional language over numbers.
 //
-// A program is a set of functions. Evaluating the entry function, `main`, yields one
-// number. There is nothing else: no strings, no collections, no effects, no state
-// carried between calls.
+// A program declares a STATE record and a set of functions. Evaluating the entry
+// function against one STATE record yields one number. There is nothing else: no
+// strings, no collections, no effects, no state carried between calls.
 // ─────────────────────────────────────────────────────────────────────────────
 
 grammar Ride
 
 entry Program:
-    (declarations+=FunDecl)*;
+    (declarations+=Declaration)*;
+
+Declaration:
+    StateDecl | FunDecl;
+
+// The record the host supplies, declared once. Field order is the wire order: the host
+// writes the fields in this order, and `LoadState(i)` reads the i-th.
+StateDecl:
+    'state' '{' fields+=StateField (',' fields+=StateField)* '}';
+
+StateField:
+    name=ID;
 
 // A named function. `main` is the entry point.
 FunDecl:
@@ -26,6 +37,7 @@ Multiplicative infers Expression:
 
 Primary infers Expression:
     {infer NumberLiteral} value=NUMBER
+    | {infer Ref} name=ID
     | '(' Expression ')';
 
 hidden terminal WS: /\s+/;

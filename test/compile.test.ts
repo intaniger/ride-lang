@@ -17,7 +17,7 @@ async function errorsOf(source: string): Promise<string[]> {
     return result.errors.map((e) => e.message);
 }
 
-const run = (b: Bytecode) => evaluate(b);
+const run = (b: Bytecode, state: number[] = []) => evaluate(b, state);
 
 // ── the shape of the language ───────────────────────────────────────────────────
 
@@ -25,6 +25,34 @@ describe('numbers in, one number out', () => {
     test('a program with no state is a constant function', async () => {
         const b = await build('let main = 2 + 3 * 4');
         expect(run(b)).toBe(14);
+        expect(b.stateArity).toBe(0);
+    });
+
+    test('state fields are read by name and written in declaration order', async () => {
+        const b = await build(`
+            state { a, b, c }
+            let main = c - a
+        `);
+        expect(b.stateFields).toEqual(['a', 'b', 'c']);
+        expect(run(b, [10, 20, 35])).toBe(25);
+        // Read by index, in the declared order.
+        expect(b.code).toEqual([
+            { op: 'LoadState', index: 2 },
+            { op: 'LoadState', index: 0 },
+            { op: 'Sub' },
+            { op: 'Ret' },
+        ]);
+    });
+
+    test('a state record that is too short is refused', async () => {
+        const b = await build('state { x, y }\nlet main = x + y');
+        expect(() => run(b, [1])).toThrow(/needs 2/);
+    });
+
+    test('the record length is checked before the first instruction, not at a read', async () => {
+        // main never reads y, and the call is still refused: the length is a property of the call.
+        const b = await build('state { x, y }\nlet main = 7');
+        expect(() => run(b, [1])).toThrow(/needs 2/);
     });
 
     test('evaluation starts at main, wherever it is declared', async () => {
@@ -69,6 +97,15 @@ describe('operators', () => {
 });
 
 describe('diagnostics', () => {
+    test('an unknown name', async () => {
+        expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);
+    });
+
+    test('an unknown name inside an expression is one message, not a cascade', async () => {
+        // The operators around the rejected name add no message of their own.
+        expect(await errorsOf('let main = (nope + 1) * 2')).toEqual(['unknown name `nope`']);
+    });
+
     test('a missing entry point', async () => {
         expect(await errorsOf('let f = 1')).toEqual([
             'no `let main = …` to start from',
@@ -78,6 +115,11 @@ describe('diagnostics', () => {
     test('a duplicate function', async () => {
         const errors = await errorsOf('let f = 1\nlet f = 2\nlet main = 3');
         expect(errors).toContain('duplicate function `f`');
+    });
+
+    test('a duplicate state field', async () => {
+        const errors = await errorsOf('state { x, x }\nlet main = x');
+        expect(errors).toContain('duplicate state field `x`');
     });
 
     test('a syntax error comes back as a diagnostic, not a throw', async () => {
