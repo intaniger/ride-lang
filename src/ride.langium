@@ -12,7 +12,7 @@ entry Program:
     (declarations+=Declaration)*;
 
 Declaration:
-    StateDecl | FunDecl;
+    StateDecl | ImportDecl | FunDecl;
 
 // The record the host supplies, declared once. Field order is the wire order: the host
 // writes the fields in this order, and `LoadState(i)` reads the i-th.
@@ -21,6 +21,11 @@ StateDecl:
 
 StateField:
     name=ID;
+
+// Take named functions from another file. There is no `export`: every top-level
+// function is importable.
+ImportDecl:
+    'import' '{' names+=ID (',' names+=ID)* '}' 'from' path=STRING;
 
 // A named function. Zero parameters is the normal shape for an entry point.
 //
@@ -81,3 +86,4 @@ hidden terminal SL_COMMENT: /\/\/[^\n\r]*/;
 
 terminal NUMBER returns number: /[0-9]+(\.[0-9]+)?/;
 terminal ID: /[_a-zA-Z][\w_]*/;
+terminal STRING: /"[^"]*"|'[^']*'/;

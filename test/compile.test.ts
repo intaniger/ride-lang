@@ -523,6 +523,26 @@ describe('no recursion: the call graph stays acyclic', () => {
     });
 });
 
+// ── imports ─────────────────────────────────────────────────────────────────────
+
+describe('import: parsed, not yet followed', () => {
+    test('an import declaration parses, and the compiler passes over it', async () => {
+        const b = await build('import { f, g } from "lib.ride"\nlet main = 1');
+        expect(run(b)).toBe(1);
+    });
+
+    test('the declaration lists only names, in braces', async () => {
+        const errors = await errorsOf('import f from "lib.ride"\nlet main = 1');
+        expect(errors.join(' ')).toMatch(/Expecting token of type '\{'/);
+    });
+
+    test('calling an imported function still fails, because nothing loads the file', async () => {
+        expect(await errorsOf('import { f } from "lib.ride"\nlet main = f(1)')).toEqual([
+            'unknown function `f`',
+        ]);
+    });
+});
+
 describe('diagnostics', () => {
     test('an unknown name', async () => {
         expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);

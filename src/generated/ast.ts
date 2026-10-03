@@ -12,6 +12,7 @@ export const RideTerminals = {
     SL_COMMENT: /\/\/[^\n\r]*/,
     NUMBER: /[0-9]+(\.[0-9]+)?/,
     ID: /[_a-zA-Z][\w_]*/,
+    STRING: /"[^"]*"|'[^']*'/,
 };
 
 export type RideTerminalNames = keyof typeof RideTerminals;
@@ -32,7 +33,9 @@ export type RideKeywordNames =
     | ">="
     | "^"
     | "else"
+    | "from"
     | "if"
+    | "import"
     | "in"
     | "let"
     | "state"
@@ -78,7 +81,7 @@ export function isCall(item: unknown): item is Call {
     return reflection.isInstance(item, Call.$type);
 }
 
-export type Declaration = FunDecl | StateDecl;
+export type Declaration = FunDecl | ImportDecl | StateDecl;
 
 export const Declaration = {
     $type: 'Declaration'
@@ -151,6 +154,23 @@ export const ImplicitMul = {
 
 export function isImplicitMul(item: unknown): item is ImplicitMul {
     return reflection.isInstance(item, ImplicitMul.$type);
+}
+
+export interface ImportDecl extends langium.AstNode {
+    readonly $container: Program;
+    readonly $type: 'ImportDecl';
+    names: Array<string>;
+    path: string;
+}
+
+export const ImportDecl = {
+    $type: 'ImportDecl',
+    names: 'names',
+    path: 'path'
+} as const;
+
+export function isImportDecl(item: unknown): item is ImportDecl {
+    return reflection.isInstance(item, ImportDecl.$type);
 }
 
 export interface LetIn extends langium.AstNode {
@@ -284,6 +304,7 @@ export type RideAstType = {
     FunDecl: FunDecl
     IfElse: IfElse
     ImplicitMul: ImplicitMul
+    ImportDecl: ImportDecl
     LetIn: LetIn
     Negate: Negate
     NumberLiteral: NumberLiteral
@@ -380,6 +401,19 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [Expression.$type]
+        },
+        ImportDecl: {
+            name: ImportDecl.$type,
+            properties: {
+                names: {
+                    name: ImportDecl.names,
+                    defaultValue: []
+                },
+                path: {
+                    name: ImportDecl.path
+                }
+            },
+            superTypes: [Declaration.$type]
         },
         LetIn: {
             name: LetIn.$type,
