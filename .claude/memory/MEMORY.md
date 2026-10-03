@@ -7,6 +7,7 @@ See `CLAUDE.md` §7.5 for what belongs in a memory leaf, and §7.6 for this inde
 ## Session logs
 
 - [2026-10-03 history by feature](session_log_20261003_horizontal_history.md) — rebuilt 5 vertical commits as 17 by feature
+- [2026-10-04 tests per commit](session_log_20261004_tests_per_commit.md) — pinned each commit message's untested claims, then rewrote and force-pushed main
 
 ## Feedback
 
