@@ -3,10 +3,14 @@
 //! A `ride` program is postfix bytecode for a stack machine. It takes a STATE record of numbers
 //! and returns one number. There is no heap, no allocation per call, and no garbage collector.
 //!
-//! One property of the language shapes this set so far:
+//! Three properties of the language shape this set:
 //!
+//! * **First-order.** A function is never a value, so there is no closure to represent and no
+//!   indirect call. `Call` names its target directly.
 //! * **Strict.** Operands are evaluated before the operation that consumes them, so the reading
 //!   order is the evaluation order.
+//! * **No recursion.** The call graph is acyclic, which is what makes the frame bound provable
+//!   at compile time rather than guessed at.
 //!
 //! Every variant owes its stack effect to `verify`, whose `match` is exhaustive with no
 //! wildcard. Adding a variant here is therefore a compile error there, not a silent wrong proof.
@@ -19,6 +23,10 @@ pub enum Op {
     Push(f32),
     /// Push `state[i]` — one field of the record the host writes once per call.
     LoadState(u8),
+    /// Push `frame[fp + i]` — a parameter or a local binding of the running function.
+    LoadLocal(u8),
+    /// Pop into `frame[fp + i]`. This is what `let x = e in ...` emits.
+    StoreLocal(u8),
 
     // ── arithmetic ──────────────────────────────────────────────────────────
     Add,
@@ -66,7 +74,13 @@ pub enum Op {
     Jump(u32),
     /// Pop one value. Jump when it is 0.0, otherwise continue. Forward only.
     JumpIfFalse(u32),
-    /// Return. The result stays on the operand stack.
+    /// Direct call to a known function.
+    ///
+    /// `fp_delta` is the *caller's* frame size. The callee's window begins just above it, so
+    /// the evaluator never consults a frame-size table at run time.
+    Call { target: u32, arity: u8, fp_delta: u8 },
+    /// Return. The result stays on the operand stack, which is why the net stack effect of
+    /// `Call` is "pop `arity`, push one".
     Ret,
 }
 

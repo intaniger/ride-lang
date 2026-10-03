@@ -22,7 +22,7 @@
 //!     state_arity: 1,
 //! };
 //!
-//! let v = Verified::new(program).expect("the proof passes");
+//! let v = Verified::new(program).expect("both proofs pass");
 //! assert_eq!(v.eval(&[3.0]).unwrap(), 1.0);
 //! assert_eq!(v.eval(&[30.0]).unwrap(), 2.0);
 //! ```
@@ -30,8 +30,8 @@
 //! ## Structure
 //!
 //! * [`op`] — the instruction set and the shape of a compiled program.
-//! * [`verify`] — the bound proof. Nothing is evaluated until it passes.
-//! * [`eval`] — the dispatch loop, on one fixed array.
+//! * [`verify`] — the two bound proofs. Nothing is evaluated until they pass.
+//! * [`eval`] — the dispatch loop, on three fixed arrays.
 //!
 //! ## What this crate does not do
 //!

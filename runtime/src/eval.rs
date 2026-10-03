@@ -1,19 +1,30 @@
 //! The evaluator.
 //!
-//! One loop over a program counter, on one fixed array. No allocation, no heap, no recursion in
-//! the evaluator itself.
+//! One loop over a program counter, on three fixed arrays. No allocation, no heap, no recursion
+//! in the evaluator itself.
 //!
 //! The loop is driven by an explicit `pc` rather than by iterating the instruction slice,
 //! because an iterator cannot jump. That single change is what the branch instructions need.
 //!
 //! Nothing here checks an index. Every index is in range because `Verified` can only be built
-//! by `verify`, and the proof there is exactly the guarantee this loop relies on:
+//! by `verify`, and the two proofs there are exactly the guarantees this loop relies on:
 //!
 //! * Proof A bounds `top`, so the operand stack never overflows and never underflows.
-//! * Forward-only jumps bound the number of steps, so the loop ends.
+//! * Proof B bounds `fp` and `rp`, so the frame array and the return stack never overflow.
+//! * Forward-only jumps and an acyclic call graph bound the number of steps, so the loop ends.
 
 use crate::op::{Op, Program};
-use crate::verify::{verify, Bounds, VerifyError, MAX_STACK};
+use crate::verify::{verify, Bounds, VerifyError, MAX_CALLS, MAX_FRAME, MAX_STACK};
+
+/// A saved call site: where to resume, and which frame window to resume into.
+///
+/// Both halves are needed. Saving only `pc` would leave the caller reading the callee's locals
+/// after the return.
+#[derive(Clone, Copy, Debug)]
+struct Resume {
+    pc: u32,
+    fp: u32,
+}
 
 /// The one error evaluation can produce.
 ///
@@ -71,8 +82,12 @@ impl Verified {
 /// The dispatch loop. Separate from `eval` so the bounds check happens exactly once.
 fn run(p: &Program, state: &[f32]) -> f32 {
     let mut stack = [0.0f32; MAX_STACK];
+    let mut frame = [0.0f32; MAX_FRAME];
+    let mut calls = [Resume { pc: 0, fp: 0 }; MAX_CALLS];
 
     let mut top = 0usize; // live operand count; the top value is stack[top - 1]
+    let mut fp = 0usize; // base of the running function's frame window
+    let mut rp = 0usize; // live entries on the return stack
     let mut pc = p.funcs[0].entry as usize;
 
     loop {
@@ -86,6 +101,16 @@ fn run(p: &Program, state: &[f32]) -> f32 {
             Op::LoadState(i) => {
                 stack[top] = state[i as usize];
                 top += 1;
+                pc += 1;
+            }
+            Op::LoadLocal(i) => {
+                stack[top] = frame[fp + i as usize];
+                top += 1;
+                pc += 1;
+            }
+            Op::StoreLocal(i) => {
+                top -= 1;
+                frame[fp + i as usize] = stack[top];
                 pc += 1;
             }
 
@@ -230,9 +255,33 @@ fn run(p: &Program, state: &[f32]) -> f32 {
                 pc = if stack[top] == 0.0 { t as usize } else { pc + 1 };
             }
 
+            Op::Call {
+                target,
+                arity,
+                fp_delta,
+            } => {
+                let n = arity as usize;
+                top -= n; // take the arguments off the operand stack
+                calls[rp] = Resume {
+                    pc: (pc + 1) as u32,
+                    fp: fp as u32,
+                };
+                rp += 1;
+                fp += fp_delta as usize; // the callee's window sits above the caller's
+                frame[fp..fp + n].copy_from_slice(&stack[top..top + n]);
+                pc = target as usize;
+            }
             Op::Ret => {
-                // The entry function has returned. Its single value is the result.
-                return stack[0];
+                if rp == 0 {
+                    // The entry function has returned. Its single value is the result.
+                    return stack[0];
+                }
+                rp -= 1;
+                let back = calls[rp];
+                pc = back.pc as usize;
+                fp = back.fp as usize;
+                // The return value stays where the callee left it, which is exactly where the
+                // caller expects its operand.
             }
         }
     }

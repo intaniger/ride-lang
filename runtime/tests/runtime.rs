@@ -2,9 +2,9 @@
 //!
 //! Three groups:
 //!   1. the evaluator produces the right numbers,
-//!   2. the proof accepts well-formed programs and reports the right bounds,
-//!   3. the proof REJECTS malformed programs — the group that matters most, because the
-//!      evaluator indexes its array with no run-time guard.
+//!   2. the two proofs accept well-formed programs and report the right bounds,
+//!   3. the two proofs REJECT malformed programs — the group that matters most, because the
+//!      evaluator indexes its arrays with no run-time guard.
 
 use ride_runtime::{EvalError, Func, Op, Program, Verified, VerifyError};
 
@@ -187,6 +187,199 @@ fn branches_take_exactly_one_arm() {
 }
 
 #[test]
+fn local_binding_is_computed_once_and_read_twice() {
+    // let u = s / 2 in u * u        (frame slot 0 holds u)
+    let code = vec![
+        Op::LoadState(0),
+        Op::Push(2.0),
+        Op::Div,
+        Op::StoreLocal(0),
+        Op::LoadLocal(0),
+        Op::LoadLocal(0),
+        Op::Mul,
+        Op::Ret,
+    ];
+    let p = one(code, 1, 1);
+    let v = Verified::new(p).expect("should verify");
+    assert_eq!(v.eval(&[6.0]).unwrap(), 9.0);
+    // Two reads of one slot, so the stack only ever holds two values.
+    assert_eq!(v.bounds().stack, 2);
+}
+
+#[test]
+fn direct_call_passes_arguments_through_the_frame() {
+    // let double a = a * 2
+    // let main = double(21)
+    //
+    // main occupies 0..4, double occupies 4..8.
+    let program = Program {
+        code: vec![
+            // main — frame 0
+            Op::Push(21.0),
+            Op::Call {
+                target: 3,
+                arity: 1,
+                fp_delta: 0,
+            },
+            Op::Ret,
+            // double — entry 3, frame 1 (its one parameter)
+            Op::LoadLocal(0),
+            Op::Push(2.0),
+            Op::Mul,
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 3,
+                arity: 0,
+                frame: 0,
+            },
+            Func {
+                entry: 3,
+                len: 4,
+                arity: 1,
+                frame: 1,
+            },
+        ],
+        state_arity: 0,
+    };
+    let v = Verified::new(program).expect("should verify");
+    assert_eq!(v.eval(&[]).unwrap(), 42.0);
+    // Proof B: main's frame (0) plus double's (1), and one level of nesting.
+    assert_eq!(v.bounds().frame, 1);
+    assert_eq!(v.bounds().calls, 1);
+}
+
+#[test]
+fn a_caller_reads_its_own_locals_after_a_call() {
+    // let g a = let t = a * 10 in t
+    // let main = let k = 5 in g(1) + k
+    //
+    // The return restores fp as well as pc. Without it, main's `LoadLocal(0)` would read g's
+    // parameter, and the result would be 10 + 1 = 11.
+    let program = Program {
+        code: vec![
+            // main — entry 0, frame 1 (k)
+            Op::Push(5.0),
+            Op::StoreLocal(0),
+            Op::Push(1.0),
+            Op::Call {
+                target: 7,
+                arity: 1,
+                fp_delta: 1,
+            },
+            Op::LoadLocal(0),
+            Op::Add,
+            Op::Ret,
+            // g — entry 7, frame 2 (a, t)
+            Op::LoadLocal(0),
+            Op::Push(10.0),
+            Op::Mul,
+            Op::StoreLocal(1),
+            Op::LoadLocal(1),
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 7,
+                arity: 0,
+                frame: 1,
+            },
+            Func {
+                entry: 7,
+                len: 6,
+                arity: 1,
+                frame: 2,
+            },
+        ],
+        state_arity: 0,
+    };
+    let v = Verified::new(program).expect("should verify");
+    assert_eq!(v.eval(&[]).unwrap(), 15.0);
+    // Both windows are live at once: main's one slot below g's two.
+    assert_eq!(v.bounds().frame, 3);
+}
+
+#[test]
+fn the_frame_bound_and_the_call_bound_can_come_from_different_paths() {
+    // main calls a and b. b calls c.
+    //
+    //   main (0) ── a (3)                  frame 0 + 3 = 3, depth 1
+    //        └──── b (1) ── c (1)          frame 0 + 1 + 1 = 2, depth 2
+    //
+    // The heaviest path is main → a. The longest is main → b → c. Proof B reports each.
+    let program = Program {
+        code: vec![
+            // main — entry 0
+            Op::Push(1.0),
+            Op::Call {
+                target: 6,
+                arity: 1,
+                fp_delta: 0,
+            },
+            Op::Push(1.0),
+            Op::Call {
+                target: 8,
+                arity: 1,
+                fp_delta: 0,
+            },
+            Op::Add,
+            Op::Ret,
+            // a — entry 6, a wide frame and no calls
+            Op::LoadLocal(0),
+            Op::Ret,
+            // b — entry 8
+            Op::LoadLocal(0),
+            Op::Call {
+                target: 11,
+                arity: 1,
+                fp_delta: 1,
+            },
+            Op::Ret,
+            // c — entry 11
+            Op::LoadLocal(0),
+            Op::Push(1.0),
+            Op::Add,
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 6,
+                arity: 0,
+                frame: 0,
+            },
+            Func {
+                entry: 6,
+                len: 2,
+                arity: 1,
+                frame: 3,
+            },
+            Func {
+                entry: 8,
+                len: 3,
+                arity: 1,
+                frame: 1,
+            },
+            Func {
+                entry: 11,
+                len: 4,
+                arity: 1,
+                frame: 1,
+            },
+        ],
+        state_arity: 0,
+    };
+    let v = Verified::new(program).expect("should verify");
+    // a(1) = 1, b(1) = c(1) = 2
+    assert_eq!(v.eval(&[]).unwrap(), 3.0);
+    assert_eq!(v.bounds().frame, 3);
+    assert_eq!(v.bounds().calls, 2);
+}
+
+#[test]
 fn four_arm_piecewise_function() {
     // A real shape this language exists to express: a piecewise function of one state field,
     // with three ascending breakpoints and a transcendental in only one arm.
@@ -307,7 +500,7 @@ fn a_branchless_blend_and_a_branch_agree_bit_for_bit() {
     }
 }
 
-// ── 2. the proof accepts, and reports real bounds ───────────────────────────────
+// ── 2. the proofs accept, and report real bounds ────────────────────────────────
 
 #[test]
 fn bounds_report_the_program_not_the_ceiling() {
@@ -325,9 +518,11 @@ fn bounds_report_the_program_not_the_ceiling() {
     ))
     .unwrap();
     assert_eq!(v.bounds().stack, 3);
+    assert_eq!(v.bounds().frame, 0);
+    assert_eq!(v.bounds().calls, 0);
 }
 
-// ── 3. the proof rejects ────────────────────────────────────────────────────────
+// ── 3. the proofs reject ────────────────────────────────────────────────────────
 
 /// Assert a program is rejected with a specific error.
 fn reject(p: Program, want: VerifyError) {
@@ -429,10 +624,83 @@ fn rejects_arms_that_leave_different_heights() {
 }
 
 #[test]
+fn rejects_a_call_graph_cycle() {
+    // f calls g, g calls f. The frame requirement is then unbounded, which is exactly why the
+    // language forbids recursion — and this is where the ban becomes a checked fact.
+    let program = Program {
+        code: vec![
+            // f — entry 0
+            Op::Push(1.0),
+            Op::Call {
+                target: 3,
+                arity: 1,
+                fp_delta: 1,
+            },
+            Op::Ret,
+            // g — entry 3
+            Op::Push(1.0),
+            Op::Call {
+                target: 0,
+                arity: 1,
+                fp_delta: 1,
+            },
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 3,
+                arity: 1,
+                frame: 1,
+            },
+            Func {
+                entry: 3,
+                len: 3,
+                arity: 1,
+                frame: 1,
+            },
+        ],
+        state_arity: 0,
+    };
+    reject(program, VerifyError::CallGraphCycle);
+}
+
+#[test]
+fn rejects_self_recursion() {
+    let program = Program {
+        code: vec![
+            Op::Push(1.0),
+            Op::Call {
+                target: 0,
+                arity: 1,
+                fp_delta: 1,
+            },
+            Op::Ret,
+        ],
+        funcs: vec![Func {
+            entry: 0,
+            len: 3,
+            arity: 1,
+            frame: 1,
+        }],
+        state_arity: 0,
+    };
+    reject(program, VerifyError::CallGraphCycle);
+}
+
+#[test]
 fn rejects_reading_past_the_state_record() {
     reject(
         one(vec![Op::LoadState(3), Op::Ret], 2, 0),
         VerifyError::BadStateIndex,
+    );
+}
+
+#[test]
+fn rejects_reading_past_the_frame_window() {
+    reject(
+        one(vec![Op::LoadLocal(2), Op::Ret], 0, 1),
+        VerifyError::BadLocalIndex,
     );
 }
 
@@ -469,6 +737,99 @@ fn rejects_a_missing_ret() {
 }
 
 #[test]
+fn rejects_a_call_to_a_non_entry_point() {
+    reject(
+        one(
+            vec![
+                Op::Push(1.0),
+                Op::Call {
+                    target: 99,
+                    arity: 1,
+                    fp_delta: 0,
+                },
+                Op::Ret,
+            ],
+            0,
+            0,
+        ),
+        VerifyError::BadCallTarget,
+    );
+}
+
+#[test]
+fn rejects_an_arity_mismatch() {
+    let program = Program {
+        code: vec![
+            Op::Push(1.0),
+            Op::Call {
+                target: 3,
+                arity: 1,
+                fp_delta: 0,
+            },
+            Op::Ret,
+            Op::LoadLocal(0),
+            Op::LoadLocal(1),
+            Op::Add,
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 3,
+                arity: 0,
+                frame: 0,
+            },
+            // declares two parameters; the call site passes one
+            Func {
+                entry: 3,
+                len: 4,
+                arity: 2,
+                frame: 2,
+            },
+        ],
+        state_arity: 0,
+    };
+    reject(program, VerifyError::ArityMismatch);
+}
+
+#[test]
+fn rejects_a_call_whose_frame_delta_is_not_the_caller_frame() {
+    // main has no frame, so its call must carry fp_delta 0. A delta of 1 would leave a gap
+    // that Proof B never counted.
+    let program = Program {
+        code: vec![
+            Op::Push(21.0),
+            Op::Call {
+                target: 3,
+                arity: 1,
+                fp_delta: 1,
+            },
+            Op::Ret,
+            Op::LoadLocal(0),
+            Op::Push(2.0),
+            Op::Mul,
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 3,
+                arity: 0,
+                frame: 0,
+            },
+            Func {
+                entry: 3,
+                len: 4,
+                arity: 1,
+                frame: 1,
+            },
+        ],
+        state_arity: 0,
+    };
+    reject(program, VerifyError::FrameDeltaMismatch);
+}
+
+#[test]
 fn rejects_unreachable_code() {
     reject(
         one(
@@ -498,6 +859,7 @@ fn every_error_has_a_distinct_code() {
     // indistinguishable to a caller.
     let all = [
         VerifyError::NoFunctions,
+        VerifyError::TooManyFunctions,
         VerifyError::CodeTooLong,
         VerifyError::FuncOutOfRange,
         VerifyError::MissingRet,
@@ -510,6 +872,12 @@ fn every_error_has_a_distinct_code() {
         VerifyError::StackUnderflow,
         VerifyError::StackOverflow,
         VerifyError::NotOneResult,
+        VerifyError::BadCallTarget,
+        VerifyError::ArityMismatch,
+        VerifyError::FrameDeltaMismatch,
+        VerifyError::CallGraphCycle,
+        VerifyError::FrameOverflow,
+        VerifyError::CallDepthOverflow,
     ];
     let mut codes: Vec<&str> = all.iter().map(|e| e.code()).collect();
     let total = codes.len();

@@ -1,15 +1,16 @@
 // A reference evaluator, in TypeScript.
 //
-// It exists so the front end can be tested without anything but Node: compile a program, run
-// the bytecode, compare the number.
+// This is the twin of `runtime/src/eval.rs`. It exists so the front end can be tested without
+// a Rust toolchain, and so the two implementations can be compared against each other.
 //
 // Every arithmetic result passes through `Math.fround`, because the runtime works in `f32` and
-// JavaScript numbers are `f64`. Without that rounding the answers would drift from the ones the
-// runtime gives, and the comparison would be worthless.
+// JavaScript numbers are `f64`. Without that rounding the two would drift and the comparison
+// would be worthless.
 //
-// ONE CAVEAT, stated rather than hidden: the transcendentals are not exact. `Math.cos` computes
-// in `f64` and is rounded to `f32` here, while a machine that computes in `f32` throughout can
-// differ in the last bit. Treat this evaluator as exact for arithmetic, and as approximate for
+// ONE CAVEAT, stated rather than hidden: the transcendentals are not guaranteed bit-identical.
+// `Math.cos` computes in `f64` and is rounded to `f32` here, while Rust's `f32::cos` computes in
+// `f32` throughout. The two can differ in the last bit. Treat this evaluator as exact for the
+// arithmetic, comparison, branch and call instructions, and as approximate for
 // `sin cos sqrt exp pow`.
 
 import type { Bytecode, Op } from './compile.js';
@@ -38,9 +39,8 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
 
     let fp = 0;
     let pc = bytecode.funcs[0].entry;
-    // A step ceiling. Jumps only go forward and the compiler rejects recursion, so a compiled
-    // program always ends. This evaluator may also be handed bytecode that did not come from the
-    // compiler, so it guards instead of trusting.
+    // A step ceiling. The runtime proves termination from forward-only jumps plus an acyclic
+    // call graph; this evaluator is a reference, so it guards instead of proving.
     let steps = 0;
     const LIMIT = 1_000_000;
 
@@ -79,7 +79,7 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
             case 'Abs': un(stack, Math.abs); pc++; break;
             case 'Exp': un(stack, Math.exp); pc++; break;
             case 'Sign':
-                // The sign of zero is zero, not one.
+                // Matches the runtime: the sign of zero is zero, not one.
                 un(stack, (a) => (a === 0 ? 0 : Math.sign(a)));
                 pc++;
                 break;

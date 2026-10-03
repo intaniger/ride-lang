@@ -1,11 +1,11 @@
-// The compiler: a `ride` source file becomes bytecode for a stack machine.
+// The compiler: a `ride` source file becomes bytecode the Rust runtime can verify and run.
 //
-// Every error in this language is a compile-time error, so the compiler returns diagnostics
-// and never throws on bad input. Five stages:
+// Five stages. Each one names what it rejects, because every error in this language is a
+// compile-time error — the runtime's only run-time fault is a STATE record that is too short.
 //
 //   1. collect    gather the state record, the functions, and their parameters
 //   2. check      names, arity, and the first-order rule
-//   3. acyclic    reject recursion, so the frame bound is provable
+//   3. acyclic    reject recursion, so the runtime's frame bound is provable
 //   4. emit       walk each function body to postfix, with jump placeholders
 //   5. link       lay the functions out, then patch call targets and jump offsets
 //
@@ -32,7 +32,7 @@ import {
     isStateDecl,
 } from './generated/ast.js';
 
-// ── the instruction set ─────────────────────────────────────────────────────────
+// ── the instruction set, mirroring runtime/src/op.rs ────────────────────────────
 
 export type Op =
     | { op: 'Push'; value: number }
@@ -176,7 +176,7 @@ export function compile(ast: AstProgram): CompileResult {
     if (errors.length > 0) return { ok: false, errors };
 
     // ── 5. link ─────────────────────────────────────────────────────────────
-    // The entry function goes first, because evaluation starts at `funcs[0]`.
+    // The entry function goes first, because the runtime starts at `funcs[0]`.
     const order = [ENTRY_NAME, ...funcs.map((f) => f.name).filter((n) => n !== ENTRY_NAME)];
 
     const layout: Func[] = [];
