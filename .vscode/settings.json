@@ -1,0 +1,6 @@
+{
+    // The Vitest extension spawns `node` from VS Code's own PATH, which ignores `.nvmrc`.
+    // The mise shim runs in the repository root, so it reads `.nvmrc` and picks Node 22.
+    // Change this path if you manage Node without mise.
+    "vitest.nodeExecutable": "~/.local/share/mise/shims/node"
+}
