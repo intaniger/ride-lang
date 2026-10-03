@@ -38,9 +38,9 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
 
     let fp = 0;
     let pc = bytecode.funcs[0].entry;
-    // A step ceiling. Jumps only go forward, but until the compiler rejects recursion a program
-    // can call itself forever. This evaluator may also be handed bytecode that did not come from
-    // the compiler, so it guards instead of trusting.
+    // A step ceiling. Jumps only go forward and the compiler rejects recursion, so a compiled
+    // program always ends. This evaluator may also be handed bytecode that did not come from the
+    // compiler, so it guards instead of trusting.
     let steps = 0;
     const LIMIT = 1_000_000;
 

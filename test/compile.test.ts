@@ -478,6 +478,51 @@ describe('first-order: a function is never a value', () => {
     });
 });
 
+describe('no recursion: the call graph stays acyclic', () => {
+    test('direct recursion is refused, and the cycle is named', async () => {
+        const errors = await errorsOf('let f x = f(x)\nlet main = f(1)');
+        expect(errors[0]).toMatch(/`f` is recursive \(f → f\)/);
+        expect(errors[0]).toMatch(/frame bound provable/);
+    });
+
+    test('mutual recursion is refused', async () => {
+        const errors = await errorsOf(`
+            let a x = b(x)
+            let b x = a(x)
+            let main = a(1)
+        `);
+        expect(errors[0]).toMatch(/is recursive/);
+        expect(errors[0]).toMatch(/→/);
+    });
+
+    test('the whole cycle is named, in one report', async () => {
+        const errors = await errorsOf(`
+            let a x = b(x)
+            let b x = a(x)
+            let main = a(1)
+        `);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatch(/\(a → b → a\)/);
+    });
+
+    test('recursion is reported before emission, so later faults add no noise', async () => {
+        // `nope` would be an unknown name, but the check that finds it never runs.
+        const errors = await errorsOf('let f x = f(x) + nope\nlet main = f(1)');
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatch(/`f` is recursive/);
+    });
+
+    test('a diamond is not a cycle and compiles', async () => {
+        const b = await build(`
+            let leaf x = x + 1
+            let left x = leaf(x) * 2
+            let right x = leaf(x) * 3
+            let main = left(1) + right(1)
+        `);
+        expect(run(b)).toBe(4 + 6);
+    });
+});
+
 describe('diagnostics', () => {
     test('an unknown name', async () => {
         expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);

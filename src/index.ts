@@ -1,8 +1,8 @@
 // The public surface: text in, bytecode out.
 //
-// `compileSource` is the whole front end. It parses with Langium, then runs the compiler stages
-// in `compile.ts`. Nothing here touches the filesystem, so the same entry point serves a CLI, a
-// test, and an editor with no disk.
+// `compileSource` is the whole front end. It parses with Langium, then runs the five compiler
+// stages in `compile.ts`. Nothing here touches the filesystem, so the same entry point serves
+// a CLI, a test, and an editor with no disk.
 
 import {
     createDefaultCoreModule,

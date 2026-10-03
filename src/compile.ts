@@ -1,14 +1,15 @@
 // The compiler: a `ride` source file becomes bytecode for a stack machine.
 //
 // Every error in this language is a compile-time error, so the compiler returns diagnostics
-// and never throws on bad input. Four stages so far:
+// and never throws on bad input. Five stages:
 //
 //   1. collect    gather the state record, the functions, and their parameters
 //   2. check      names, arity, and the first-order rule
-//   3. emit       walk each function body to postfix, with jump placeholders
-//   4. link       lay the functions out, then patch call targets and jump offsets
+//   3. acyclic    reject recursion, so the frame bound is provable
+//   4. emit       walk each function body to postfix, with jump placeholders
+//   5. link       lay the functions out, then patch call targets and jump offsets
 //
-// Stage 3 does NOT simplify the arithmetic. The shape the author wrote is the shape that runs.
+// Stage 4 does NOT simplify the arithmetic. The shape the author wrote is the shape that runs.
 // That is deliberate: an algebraic simplifier reassociates, `f32` addition is not associative,
 // and a reader comparing source to behaviour would have to account for the difference.
 
@@ -147,9 +148,26 @@ export function compile(ast: AstProgram): CompileResult {
         });
     }
 
+    // ── 3. acyclic (needs only names, so it runs before emission) ───────────
+    // Reported here rather than left to the runtime verifier: the compiler knows the names,
+    // so it can say which cycle, and a name is more use than an opcode index.
+    for (const f of funcs) {
+        const cycle = findCycle(f.name, byName);
+        if (cycle) {
+            errors.push({
+                message:
+                    `\`${f.name}\` is recursive (${cycle.join(' → ')}). ` +
+                    'ride forbids recursion: an acyclic call graph is what makes the ' +
+                    'frame bound provable at compile time.',
+                at: f.name,
+            });
+            break; // one report is enough; the whole cycle is named
+        }
+    }
+
     if (errors.length > 0) return { ok: false, errors };
 
-    // ── 2 + 3. check and emit, one walk per function ────────────────────────
+    // ── 2 + 4. check and emit, one walk per function ────────────────────────
     const emitted = new Map<string, { code: Op[]; frame: number; arity: number }>();
     for (const f of funcs) {
         const out = emitFunction(f, stateFields, byName, errors);
@@ -157,7 +175,7 @@ export function compile(ast: AstProgram): CompileResult {
     }
     if (errors.length > 0) return { ok: false, errors };
 
-    // ── 4. link ─────────────────────────────────────────────────────────────
+    // ── 5. link ─────────────────────────────────────────────────────────────
     // The entry function goes first, because evaluation starts at `funcs[0]`.
     const order = [ENTRY_NAME, ...funcs.map((f) => f.name).filter((n) => n !== ENTRY_NAME)];
 
@@ -393,4 +411,55 @@ function duplicates(names: string[]): string[] {
         seen.add(n);
     }
     return [...dupes];
+}
+
+/** Depth-first search for a cycle reachable from `start`, by function name. */
+function findCycle(start: string, byName: Map<string, FunDecl>): string[] | undefined {
+    const path: string[] = [];
+    const onPath = new Set<string>();
+    const done = new Set<string>();
+
+    const visit = (name: string): string[] | undefined => {
+        if (onPath.has(name)) return [...path.slice(path.indexOf(name)), name];
+        if (done.has(name)) return undefined;
+        const decl = byName.get(name);
+        if (!decl) return undefined;
+
+        onPath.add(name);
+        path.push(name);
+        for (const callee of calleeNames(decl.body, byName)) {
+            const found = visit(callee);
+            if (found) return found;
+        }
+        path.pop();
+        onPath.delete(name);
+        done.add(name);
+        return undefined;
+    };
+    return visit(start);
+}
+
+/** Every user function this expression calls, directly. */
+function calleeNames(e: Expression, byName: Map<string, FunDecl>): string[] {
+    const out: string[] = [];
+    const walk = (n: Expression): void => {
+        if (isCall(n)) {
+            if (byName.has(n.callee)) out.push(n.callee);
+            n.args.forEach(walk);
+        } else if (isBinary(n) || isImplicitMul(n)) {
+            walk(n.left);
+            walk(n.right);
+        } else if (isNegate(n)) {
+            walk(n.operand);
+        } else if (isLetIn(n)) {
+            walk(n.value);
+            walk(n.body);
+        } else if (isIfElse(n)) {
+            walk(n.condition);
+            walk(n.whenTrue);
+            walk(n.whenFalse);
+        }
+    };
+    walk(e);
+    return out;
 }
