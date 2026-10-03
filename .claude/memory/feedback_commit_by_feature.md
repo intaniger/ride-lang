@@ -36,4 +36,4 @@ want to divide commit again by feature (horizontal) not by file (vertical)."
 - When rewriting history, the final tree must equal the old tip byte for byte. Check it with
   `git diff <old-tip> <new-tip>`. Tag the old tip first.
 
-Related: [[project-langium-generate-needs-node-21]]
+Related: [[project-node-22-required]]
