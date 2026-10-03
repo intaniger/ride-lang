@@ -126,7 +126,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@16"
+            "$ref": "#/rules@18"
           },
           "arguments": []
         }
@@ -152,7 +152,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@16"
+                "$ref": "#/rules@18"
               },
               "arguments": []
             }
@@ -195,6 +195,169 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
     },
     {
       "$type": "ParserRule",
+      "name": "IfElse",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Action",
+                "inferredType": {
+                  "$type": "InferredType",
+                  "name": "IfElse"
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": "if"
+              },
+              {
+                "$type": "Assignment",
+                "feature": "condition",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@5"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": "then"
+              },
+              {
+                "$type": "Assignment",
+                "feature": "whenTrue",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@5"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": "else"
+              },
+              {
+                "$type": "Assignment",
+                "feature": "whenFalse",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@5"
+                  },
+                  "arguments": []
+                }
+              }
+            ]
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@7"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "Comparison",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@8"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Action",
+                "inferredType": {
+                  "$type": "InferredType",
+                  "name": "Binary"
+                },
+                "feature": "left",
+                "operator": "="
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operator",
+                "operator": "=",
+                "terminal": {
+                  "$type": "Alternatives",
+                  "elements": [
+                    {
+                      "$type": "Keyword",
+                      "value": "<="
+                    },
+                    {
+                      "$type": "Keyword",
+                      "value": ">="
+                    },
+                    {
+                      "$type": "Keyword",
+                      "value": "=="
+                    },
+                    {
+                      "$type": "Keyword",
+                      "value": "<"
+                    },
+                    {
+                      "$type": "Keyword",
+                      "value": ">"
+                    }
+                  ]
+                }
+              },
+              {
+                "$type": "Assignment",
+                "feature": "right",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@8"
+                  },
+                  "arguments": []
+                }
+              }
+            ],
+            "cardinality": "?"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
       "name": "Additive",
       "inferredType": {
         "$type": "InferredType",
@@ -206,7 +369,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@7"
+              "$ref": "#/rules@9"
             },
             "arguments": []
           },
@@ -247,7 +410,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@7"
+                    "$ref": "#/rules@9"
                   },
                   "arguments": []
                 }
@@ -274,7 +437,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@8"
+              "$ref": "#/rules@10"
             },
             "arguments": []
           },
@@ -315,7 +478,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@8"
+                    "$ref": "#/rules@10"
                   },
                   "arguments": []
                 }
@@ -342,7 +505,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@9"
+              "$ref": "#/rules@11"
             },
             "arguments": []
           },
@@ -374,7 +537,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@8"
+                    "$ref": "#/rules@10"
                   },
                   "arguments": []
                 }
@@ -419,7 +582,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@9"
+                    "$ref": "#/rules@11"
                   },
                   "arguments": []
                 }
@@ -429,7 +592,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@10"
+              "$ref": "#/rules@12"
             },
             "arguments": []
           }
@@ -452,7 +615,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@11"
+              "$ref": "#/rules@13"
             },
             "arguments": []
           },
@@ -475,7 +638,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@11"
+                    "$ref": "#/rules@13"
                   },
                   "arguments": []
                 }
@@ -516,7 +679,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@16"
+                    "$ref": "#/rules@18"
                   },
                   "arguments": []
                 }
@@ -588,7 +751,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@15"
+                    "$ref": "#/rules@17"
                   },
                   "arguments": []
                 }
@@ -612,7 +775,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@16"
+                    "$ref": "#/rules@18"
                   },
                   "arguments": []
                 }

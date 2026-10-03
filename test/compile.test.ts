@@ -80,6 +80,12 @@ describe('operators', () => {
         expect(run(await build('let main = 1 + 2 * 3'))).toBe(7);
     });
 
+    test('comparison yields one or zero', async () => {
+        expect(run(await build('let main = 1 < 2'))).toBe(1);
+        expect(run(await build('let main = 2 < 2'))).toBe(0);
+        expect(run(await build('let main = 2 >= 2'))).toBe(1);
+    });
+
     test('unary minus', async () => {
         expect(run(await build('let main = -(3 - 5)'))).toBe(2);
     });
@@ -122,6 +128,15 @@ describe('operators', () => {
             { op: 'Neg' },
             { op: 'Ret' },
         ]);
+    });
+
+    test('the other three comparisons yield one or zero', async () => {
+        expect(run(await build('let main = 2 > 1'))).toBe(1);
+        expect(run(await build('let main = 2 > 2'))).toBe(0);
+        expect(run(await build('let main = 2 <= 2'))).toBe(1);
+        expect(run(await build('let main = 3 <= 2'))).toBe(0);
+        expect(run(await build('let main = 2 == 2'))).toBe(1);
+        expect(run(await build('let main = 2 == 3'))).toBe(0);
     });
 });
 
@@ -206,6 +221,77 @@ describe('builtins', () => {
     test('the transcendentals are computed in f64 and rounded to f32', async () => {
         expect(run(await build('let main = sin(1)'))).toBe(Math.fround(Math.sin(1)));
         expect(run(await build('let main = exp(1)'))).toBe(Math.fround(Math.exp(1)));
+    });
+});
+
+// ── branches ────────────────────────────────────────────────────────────────────
+
+describe('if / then / else', () => {
+    test('takes exactly one arm', async () => {
+        const b = await build(`
+            state { s }
+            let main = if s < 10 then 1 else 2
+        `);
+        expect(run(b, [3])).toBe(1);
+        expect(run(b, [30])).toBe(2);
+    });
+
+    test('emits a forward JumpIfFalse over the first arm and a Jump over the second', async () => {
+        const b = await build('state { s }\nlet main = if s < 10 then 1 else 2');
+        expect(b.code).toEqual([
+            { op: 'LoadState', index: 0 },
+            { op: 'Push', value: 10 },
+            { op: 'Lt' },
+            { op: 'JumpIfFalse', target: 6 },
+            { op: 'Push', value: 1 },
+            { op: 'Jump', target: 7 },
+            { op: 'Push', value: 2 },
+            { op: 'Ret' },
+        ]);
+        // Every jump goes forward. The runtime verifier rejects a backward one.
+        for (const [i, instr] of b.code.entries()) {
+            if (instr.op === 'Jump' || instr.op === 'JumpIfFalse') {
+                expect(instr.target).toBeGreaterThan(i);
+            }
+        }
+    });
+
+    test('a chain of branches selects by interval', async () => {
+        const b = await build(`
+            state { s }
+            let main =
+                if s < 10 then 1
+                else if s < 20 then 2
+                else if s < 30 then 3
+                else 4
+        `);
+        expect([5, 15, 25, 35].map((s) => run(b, [s]))).toEqual([1, 2, 3, 4]);
+    });
+
+    test('an if with no else is a syntax error', async () => {
+        const errors = await errorsOf('let main = if 1 then 2');
+        expect(errors.join(' ')).toMatch(/else/i);
+    });
+
+    test('comparison does not chain', async () => {
+        // Grouped left, `1 < 3 < 2` would be `(1 < 3) < 2`, which is `1 < 2`: quietly 1.
+        const errors = await errorsOf('let main = 1 < 3 < 2');
+        expect(errors.join(' ')).toMatch(/found `<`/);
+    });
+
+    test('any non-zero condition takes the first arm', async () => {
+        // JumpIfFalse jumps on 0 only, so a truth value is just a number.
+        expect(run(await build('let main = if 0.5 then 1 else 2'))).toBe(1);
+        expect(run(await build('let main = if 0 then 1 else 2'))).toBe(2);
+    });
+
+    test('the step ceiling stops bytecode that did not come from the compiler', async () => {
+        // A compiled program always ends. Point its Jump at itself, and it would not.
+        const b = await build('state { s }\nlet main = if s < 10 then 1 else 2');
+        const at = b.code.findIndex((o) => o.op === 'Jump');
+        const code = [...b.code];
+        code[at] = { op: 'Jump', target: at };
+        expect(() => run({ ...b, code }, [3])).toThrow(/step limit exceeded/);
     });
 });
 

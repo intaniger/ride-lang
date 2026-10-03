@@ -35,8 +35,14 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
     const stack: number[] = [];
 
     let pc = bytecode.funcs[0].entry;
+    // A step ceiling. The compiler emits forward jumps only, so a compiled program always ends.
+    // This evaluator is a reference and may be handed other bytecode, so it guards instead of
+    // trusting.
+    let steps = 0;
+    const LIMIT = 1_000_000;
 
     for (;;) {
+        if (++steps > LIMIT) throw new EvaluateError('step limit exceeded');
         const instr: Op = code[pc];
 
         switch (instr.op) {
@@ -102,6 +108,19 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
                 break;
             }
 
+            case 'Lt': cmp(stack, (a, b) => a < b); pc++; break;
+            case 'Gt': cmp(stack, (a, b) => a > b); pc++; break;
+            case 'Le': cmp(stack, (a, b) => a <= b); pc++; break;
+            case 'Ge': cmp(stack, (a, b) => a >= b); pc++; break;
+            case 'Eq': cmp(stack, (a, b) => a === b); pc++; break;
+
+            case 'Jump':
+                pc = instr.target;
+                break;
+            case 'JumpIfFalse':
+                pc = stack.pop() === 0 ? instr.target : pc + 1;
+                break;
+
             case 'Ret':
                 return stack[0];
 
@@ -121,4 +140,10 @@ function bin(stack: number[], f: (a: number, b: number) => number): void {
 
 function un(stack: number[], f: (a: number) => number): void {
     stack.push(f32(f(stack.pop()!)));
+}
+
+function cmp(stack: number[], f: (a: number, b: number) => boolean): void {
+    const b = stack.pop()!;
+    const a = stack.pop()!;
+    stack.push(f(a, b) ? 1 : 0);
 }

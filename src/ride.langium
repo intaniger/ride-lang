@@ -27,7 +27,17 @@ FunDecl:
     'let' name=ID '=' body=Expression;
 
 Expression:
-    Additive;
+    IfElse;
+
+// `else` is mandatory. A branch with no `else` could produce no value.
+IfElse infers Expression:
+    {infer IfElse} 'if' condition=Expression 'then' whenTrue=Expression 'else' whenFalse=Expression
+    | Comparison;
+
+// Non-associative: `a < b < c` is rejected rather than silently grouped.
+Comparison infers Expression:
+    Additive ({infer Binary.left=current} operator=('<=' | '>=' | '==' | '<' | '>') right=Additive)?;
+
 
 Additive infers Expression:
     Multiplicative ({infer Binary.left=current} operator=('+' | '-') right=Multiplicative)*;

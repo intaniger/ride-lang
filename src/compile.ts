@@ -21,6 +21,7 @@ import {
     isBinary,
     isCall,
     isFunDecl,
+    isIfElse,
     isImplicitMul,
     isNegate,
     isNumberLiteral,
@@ -33,6 +34,8 @@ import {
 export type Op =
     | { op: 'Push'; value: number }
     | { op: 'LoadState'; index: number }
+    | { op: 'Jump'; target: number }
+    | { op: 'JumpIfFalse'; target: number }
     | { op: Nullary };
 
 /** Every operation that carries no immediate. */
@@ -40,6 +43,7 @@ type Nullary =
     | 'Add' | 'Sub' | 'Mul' | 'Div' | 'Pow' | 'Neg'
     | 'Sin' | 'Cos' | 'Sqrt' | 'Abs' | 'Sign' | 'Exp'
     | 'Max' | 'Min' | 'Step' | 'Mix' | 'Clamp' | 'Select'
+    | 'Lt' | 'Gt' | 'Le' | 'Ge' | 'Eq'
     | 'Ret';
 
 export interface Func {
@@ -82,6 +86,14 @@ const BUILTINS: Record<string, { arity: number; op: Nullary }> = {
     mix: { arity: 3, op: 'Mix' },
     clamp: { arity: 3, op: 'Clamp' },
     select: { arity: 4, op: 'Select' },
+};
+
+const COMPARISONS: Record<string, Nullary> = {
+    '<': 'Lt',
+    '>': 'Gt',
+    '<=': 'Le',
+    '>=': 'Ge',
+    '==': 'Eq',
 };
 
 const ARITHMETIC: Record<string, Nullary> = {
@@ -145,7 +157,17 @@ export function compile(ast: AstProgram): CompileResult {
     }
 
     const code: Op[] = [];
-    for (const f of layout) code.push(...emitted.get(f.name)!.code);
+    for (const f of layout) {
+        const e = emitted.get(f.name)!;
+        for (const instr of e.code) {
+            if (instr.op === 'Jump' || instr.op === 'JumpIfFalse') {
+                // Jump targets are emitted relative to the function, then rebased.
+                code.push({ ...instr, target: instr.target + f.entry });
+            } else {
+                code.push(instr);
+            }
+        }
+    }
 
     return {
         ok: true,
@@ -199,12 +221,31 @@ function emitFunction(
         if (isBinary(e)) {
             walk(e.left);
             walk(e.right);
-            const op = ARITHMETIC[e.operator];
+            const op = ARITHMETIC[e.operator] ?? COMPARISONS[e.operator];
             if (!op) {
                 errors.push({ message: `unknown operator \`${e.operator}\`` });
                 return;
             }
             code.push({ op });
+            return;
+        }
+
+        if (isIfElse(e)) {
+            //   <condition>
+            //   JumpIfFalse  →  else
+            //   <whenTrue>
+            //   Jump         →  join
+            //   <whenFalse>
+            //   join:
+            walk(e.condition);
+            const toElse = code.length;
+            code.push({ op: 'JumpIfFalse', target: -1 });
+            walk(e.whenTrue);
+            const toJoin = code.length;
+            code.push({ op: 'Jump', target: -1 });
+            patch(code, toElse, code.length);
+            walk(e.whenFalse);
+            patch(code, toJoin, code.length);
             return;
         }
 
@@ -234,6 +275,11 @@ function emitFunction(
     code.push({ op: 'Ret' });
 
     return { code };
+}
+
+function patch(code: Op[], at: number, target: number): void {
+    const instr = code[at];
+    if (instr.op === 'Jump' || instr.op === 'JumpIfFalse') instr.target = target;
 }
 
 function duplicates(names: string[]): string[] {

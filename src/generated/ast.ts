@@ -24,20 +24,28 @@ export type RideKeywordNames =
     | ","
     | "-"
     | "/"
+    | "<"
+    | "<="
     | "="
+    | "=="
+    | ">"
+    | ">="
     | "^"
+    | "else"
+    | "if"
     | "let"
     | "state"
+    | "then"
     | "{"
     | "}";
 
 export type RideTokenNames = RideTerminalNames | RideKeywordNames;
 
 export interface Binary extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
     readonly $type: 'Binary';
     left: Expression;
-    operator: '*' | '+' | '-' | '/' | '^';
+    operator: '*' | '+' | '-' | '/' | '<' | '<=' | '==' | '>' | '>=' | '^';
     right: Expression;
 }
 
@@ -53,7 +61,7 @@ export function isBinary(item: unknown): item is Binary {
 }
 
 export interface Call extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
     readonly $type: 'Call';
     args: Array<Expression>;
     callee: string;
@@ -79,7 +87,7 @@ export function isDeclaration(item: unknown): item is Declaration {
     return reflection.isInstance(item, Declaration.$type);
 }
 
-export type Expression = Binary | Call | ImplicitMul | Negate | NumberLiteral | Ref;
+export type Expression = Binary | Call | IfElse | ImplicitMul | Negate | NumberLiteral | Ref;
 
 export const Expression = {
     $type: 'Expression'
@@ -106,8 +114,27 @@ export function isFunDecl(item: unknown): item is FunDecl {
     return reflection.isInstance(item, FunDecl.$type);
 }
 
+export interface IfElse extends langium.AstNode {
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $type: 'IfElse';
+    condition: Expression;
+    whenFalse: Expression;
+    whenTrue: Expression;
+}
+
+export const IfElse = {
+    $type: 'IfElse',
+    condition: 'condition',
+    whenFalse: 'whenFalse',
+    whenTrue: 'whenTrue'
+} as const;
+
+export function isIfElse(item: unknown): item is IfElse {
+    return reflection.isInstance(item, IfElse.$type);
+}
+
 export interface ImplicitMul extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
     readonly $type: 'ImplicitMul';
     left: Expression;
     right: Expression;
@@ -124,7 +151,7 @@ export function isImplicitMul(item: unknown): item is ImplicitMul {
 }
 
 export interface Negate extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
     readonly $type: 'Negate';
     operand: Expression;
 }
@@ -139,7 +166,7 @@ export function isNegate(item: unknown): item is Negate {
 }
 
 export interface NumberLiteral extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
     readonly $type: 'NumberLiteral';
     value: number;
 }
@@ -168,7 +195,7 @@ export function isProgram(item: unknown): item is Program {
 }
 
 export interface Ref extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
     readonly $type: 'Ref';
     name: string;
 }
@@ -218,6 +245,7 @@ export type RideAstType = {
     Declaration: Declaration
     Expression: Expression
     FunDecl: FunDecl
+    IfElse: IfElse
     ImplicitMul: ImplicitMul
     Negate: Negate
     NumberLiteral: NumberLiteral
@@ -281,6 +309,21 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [Declaration.$type]
+        },
+        IfElse: {
+            name: IfElse.$type,
+            properties: {
+                condition: {
+                    name: IfElse.condition
+                },
+                whenFalse: {
+                    name: IfElse.whenFalse
+                },
+                whenTrue: {
+                    name: IfElse.whenTrue
+                }
+            },
+            superTypes: [Expression.$type]
         },
         ImplicitMul: {
             name: ImplicitMul.$type,
