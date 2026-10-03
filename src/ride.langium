@@ -27,7 +27,13 @@ FunDecl:
     'let' name=ID '=' body=Expression;
 
 Expression:
-    IfElse;
+    LetIn;
+
+// A local binding. Scoped to `body`, so it is never evaluated on a path that does not
+// reach it — which is why the binding sits inside the branch arm that uses it.
+LetIn infers Expression:
+    {infer LetIn} 'let' name=ID '=' value=Expression 'in' body=Expression
+    | IfElse;
 
 // `else` is mandatory. A branch with no `else` could produce no value.
 IfElse infers Expression:

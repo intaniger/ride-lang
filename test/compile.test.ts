@@ -295,6 +295,63 @@ describe('if / then / else', () => {
     });
 });
 
+// ── local bindings ──────────────────────────────────────────────────────────────
+
+describe('let … in', () => {
+    test('computes the value once and reads it from a frame slot', async () => {
+        const b = await build(`
+            state { s }
+            let main = let u = s / 2 in u * u
+        `);
+        expect(run(b, [6])).toBe(9);
+        expect(b.code).toEqual([
+            { op: 'LoadState', index: 0 },
+            { op: 'Push', value: 2 },
+            { op: 'Div' },
+            { op: 'StoreLocal', index: 0 },
+            { op: 'LoadLocal', index: 0 },
+            { op: 'LoadLocal', index: 0 },
+            { op: 'Mul' },
+            { op: 'Ret' },
+        ]);
+        // One slot for one binding.
+        expect(b.funcs[0].frame).toBe(1);
+    });
+
+    test('a binding inside a branch arm widens the frame but is only evaluated on that path', async () => {
+        const b = await build(`
+            state { s }
+            let main =
+                if s < 0 then 0
+                else let u = (s - 570) / 3 in 2 + 25.7u - 4.9(u^2)
+        `);
+        expect(b.funcs[0].frame).toBe(1);
+        // On the first arm the StoreLocal is never reached.
+        expect(run(b, [-1])).toBe(0);
+        // On the second it is: at s = 570, u = 0, so the result is 2.
+        expect(run(b, [570])).toBe(2);
+    });
+
+    test('a local shadows a state field of the same name', async () => {
+        const b = await build(`
+            state { x }
+            let main = let x = 100 in x
+        `);
+        expect(run(b, [7])).toBe(100);
+    });
+
+    test('each let gets its own slot, in source order', async () => {
+        const b = await build('let main = let a = 1 in let b = 10 in a - b');
+        expect(run(b)).toBe(-9);
+        expect(b.funcs[0].frame).toBe(2);
+        const stores = b.code.filter((o) => o.op === 'StoreLocal');
+        expect(stores).toEqual([
+            { op: 'StoreLocal', index: 0 },
+            { op: 'StoreLocal', index: 1 },
+        ]);
+    });
+});
+
 describe('diagnostics', () => {
     test('an unknown name', async () => {
         expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);

@@ -23,6 +23,7 @@ import {
     isFunDecl,
     isIfElse,
     isImplicitMul,
+    isLetIn,
     isNegate,
     isNumberLiteral,
     isRef,
@@ -34,6 +35,8 @@ import {
 export type Op =
     | { op: 'Push'; value: number }
     | { op: 'LoadState'; index: number }
+    | { op: 'LoadLocal'; index: number }
+    | { op: 'StoreLocal'; index: number }
     | { op: 'Jump'; target: number }
     | { op: 'JumpIfFalse'; target: number }
     | { op: Nullary };
@@ -50,6 +53,7 @@ export interface Func {
     name: string;
     entry: number;
     len: number;
+    frame: number;
 }
 
 export interface Bytecode {
@@ -137,7 +141,7 @@ export function compile(ast: AstProgram): CompileResult {
     if (errors.length > 0) return { ok: false, errors };
 
     // ── 2. emit, one walk per function ──────────────────────────────────────
-    const emitted = new Map<string, { code: Op[] }>();
+    const emitted = new Map<string, { code: Op[]; frame: number }>();
     for (const f of funcs) {
         const out = emitFunction(f, stateFields, errors);
         emitted.set(f.name, out);
@@ -152,7 +156,7 @@ export function compile(ast: AstProgram): CompileResult {
     let cursor = 0;
     for (const name of order) {
         const e = emitted.get(name)!;
-        layout.push({ name, entry: cursor, len: e.code.length });
+        layout.push({ name, entry: cursor, len: e.code.length, frame: e.frame });
         cursor += e.code.length;
     }
 
@@ -185,8 +189,12 @@ function emitFunction(
     f: FunDecl,
     stateFields: string[],
     errors: Diagnostic[],
-): { code: Op[] } {
+): { code: Op[]; frame: number } {
     const code: Op[] = [];
+
+    // Frame layout: one slot per `let`, in source order.
+    const slots = new Map<string, number>();
+    let frame = 0;
 
     const walk = (e: Expression): void => {
         if (isNumberLiteral(e)) {
@@ -195,6 +203,12 @@ function emitFunction(
         }
 
         if (isRef(e)) {
+            // Lexical scope: a local shadows a state field.
+            const slot = slots.get(e.name);
+            if (slot !== undefined) {
+                code.push({ op: 'LoadLocal', index: slot });
+                return;
+            }
             const field = stateFields.indexOf(e.name);
             if (field >= 0) {
                 code.push({ op: 'LoadState', index: field });
@@ -227,6 +241,19 @@ function emitFunction(
                 return;
             }
             code.push({ op });
+            return;
+        }
+
+        if (isLetIn(e)) {
+            // The binding is evaluated once, here, and stored. Reads become `LoadLocal`.
+            walk(e.value);
+            let slot = slots.get(e.name);
+            if (slot === undefined) {
+                slot = frame++;
+            }
+            slots.set(e.name, slot);
+            code.push({ op: 'StoreLocal', index: slot });
+            walk(e.body);
             return;
         }
 
@@ -274,7 +301,7 @@ function emitFunction(
     walk(f.body);
     code.push({ op: 'Ret' });
 
-    return { code };
+    return { code, frame };
 }
 
 function patch(code: Op[], at: number, target: number): void {

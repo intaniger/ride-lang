@@ -33,6 +33,7 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
 
     const code = bytecode.code;
     const stack: number[] = [];
+    const frame: number[] = [];
 
     let pc = bytecode.funcs[0].entry;
     // A step ceiling. The compiler emits forward jumps only, so a compiled program always ends.
@@ -52,6 +53,14 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
                 break;
             case 'LoadState':
                 stack.push(f32(state[instr.index]));
+                pc++;
+                break;
+            case 'LoadLocal':
+                stack.push(frame[instr.index]);
+                pc++;
+                break;
+            case 'StoreLocal':
+                frame[instr.index] = stack.pop()!;
                 pc++;
                 break;
 

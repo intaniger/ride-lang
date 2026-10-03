@@ -33,6 +33,7 @@ export type RideKeywordNames =
     | "^"
     | "else"
     | "if"
+    | "in"
     | "let"
     | "state"
     | "then"
@@ -42,7 +43,7 @@ export type RideKeywordNames =
 export type RideTokenNames = RideTerminalNames | RideKeywordNames;
 
 export interface Binary extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'Binary';
     left: Expression;
     operator: '*' | '+' | '-' | '/' | '<' | '<=' | '==' | '>' | '>=' | '^';
@@ -61,7 +62,7 @@ export function isBinary(item: unknown): item is Binary {
 }
 
 export interface Call extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'Call';
     args: Array<Expression>;
     callee: string;
@@ -87,7 +88,7 @@ export function isDeclaration(item: unknown): item is Declaration {
     return reflection.isInstance(item, Declaration.$type);
 }
 
-export type Expression = Binary | Call | IfElse | ImplicitMul | Negate | NumberLiteral | Ref;
+export type Expression = Binary | Call | IfElse | ImplicitMul | LetIn | Negate | NumberLiteral | Ref;
 
 export const Expression = {
     $type: 'Expression'
@@ -115,7 +116,7 @@ export function isFunDecl(item: unknown): item is FunDecl {
 }
 
 export interface IfElse extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'IfElse';
     condition: Expression;
     whenFalse: Expression;
@@ -134,7 +135,7 @@ export function isIfElse(item: unknown): item is IfElse {
 }
 
 export interface ImplicitMul extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'ImplicitMul';
     left: Expression;
     right: Expression;
@@ -150,8 +151,27 @@ export function isImplicitMul(item: unknown): item is ImplicitMul {
     return reflection.isInstance(item, ImplicitMul.$type);
 }
 
+export interface LetIn extends langium.AstNode {
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
+    readonly $type: 'LetIn';
+    body: Expression;
+    name: string;
+    value: Expression;
+}
+
+export const LetIn = {
+    $type: 'LetIn',
+    body: 'body',
+    name: 'name',
+    value: 'value'
+} as const;
+
+export function isLetIn(item: unknown): item is LetIn {
+    return reflection.isInstance(item, LetIn.$type);
+}
+
 export interface Negate extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'Negate';
     operand: Expression;
 }
@@ -166,7 +186,7 @@ export function isNegate(item: unknown): item is Negate {
 }
 
 export interface NumberLiteral extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'NumberLiteral';
     value: number;
 }
@@ -195,7 +215,7 @@ export function isProgram(item: unknown): item is Program {
 }
 
 export interface Ref extends langium.AstNode {
-    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | Negate;
+    readonly $container: Binary | Call | FunDecl | IfElse | ImplicitMul | LetIn | Negate;
     readonly $type: 'Ref';
     name: string;
 }
@@ -247,6 +267,7 @@ export type RideAstType = {
     FunDecl: FunDecl
     IfElse: IfElse
     ImplicitMul: ImplicitMul
+    LetIn: LetIn
     Negate: Negate
     NumberLiteral: NumberLiteral
     Program: Program
@@ -333,6 +354,21 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 },
                 right: {
                     name: ImplicitMul.right
+                }
+            },
+            superTypes: [Expression.$type]
+        },
+        LetIn: {
+            name: LetIn.$type,
+            properties: {
+                body: {
+                    name: LetIn.body
+                },
+                name: {
+                    name: LetIn.name
+                },
+                value: {
+                    name: LetIn.value
                 }
             },
             superTypes: [Expression.$type]
