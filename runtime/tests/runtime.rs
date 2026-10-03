@@ -142,6 +142,171 @@ fn sign_of_zero_is_zero() {
     assert_eq!(eval(vec![Op::Push(3.0), Op::Sign, Op::Ret], &[]), 1.0);
 }
 
+#[test]
+fn comparison_yields_one_or_zero() {
+    assert_eq!(
+        eval(vec![Op::Push(1.0), Op::Push(2.0), Op::Lt, Op::Ret], &[]),
+        1.0
+    );
+    assert_eq!(
+        eval(vec![Op::Push(2.0), Op::Push(2.0), Op::Lt, Op::Ret], &[]),
+        0.0
+    );
+    assert_eq!(
+        eval(vec![Op::Push(2.0), Op::Push(2.0), Op::Ge, Op::Ret], &[]),
+        1.0
+    );
+}
+
+#[test]
+fn the_other_three_comparisons_yield_one_or_zero() {
+    let cmp = |op: Op, a: f32, b: f32| eval(vec![Op::Push(a), Op::Push(b), op, Op::Ret], &[]);
+    assert_eq!(cmp(Op::Gt, 2.0, 1.0), 1.0);
+    assert_eq!(cmp(Op::Gt, 2.0, 2.0), 0.0);
+    assert_eq!(cmp(Op::Le, 2.0, 2.0), 1.0);
+    assert_eq!(cmp(Op::Le, 3.0, 2.0), 0.0);
+    assert_eq!(cmp(Op::Eq, 2.0, 2.0), 1.0);
+    assert_eq!(cmp(Op::Eq, 2.0, 3.0), 0.0);
+}
+
+#[test]
+fn branches_take_exactly_one_arm() {
+    // if s < 10 then 1 else 2
+    let code = vec![
+        Op::LoadState(0),
+        Op::Push(10.0),
+        Op::Lt,
+        Op::JumpIfFalse(6),
+        Op::Push(1.0),
+        Op::Jump(7),
+        Op::Push(2.0),
+        Op::Ret,
+    ];
+    assert_eq!(eval(code.clone(), &[3.0]), 1.0);
+    assert_eq!(eval(code, &[30.0]), 2.0);
+}
+
+#[test]
+fn four_arm_piecewise_function() {
+    // A real shape this language exists to express: a piecewise function of one state field,
+    // with three ascending breakpoints and a transcendental in only one arm.
+    //
+    //   if s < 345   then 350.1
+    //   else if s < 360 then 0.9267*s + 30.3885
+    //   else if s < 570 then s + 5 - cos(0.6133*s - 220.788)
+    //   else                 1.2933*s - 161.181
+    let code = vec![
+        Op::LoadState(0),       //  0
+        Op::Push(345.0),        //  1
+        Op::Lt,                 //  2
+        Op::JumpIfFalse(6),     //  3
+        Op::Push(350.1),        //  4
+        Op::Jump(36),           //  5
+        Op::LoadState(0),       //  6
+        Op::Push(360.0),        //  7
+        Op::Lt,                 //  8
+        Op::JumpIfFalse(16),    //  9
+        Op::Push(0.9267),       // 10
+        Op::LoadState(0),       // 11
+        Op::Mul,                // 12
+        Op::Push(30.3885),      // 13
+        Op::Add,                // 14
+        Op::Jump(36),           // 15
+        Op::LoadState(0),       // 16
+        Op::Push(570.0),        // 17
+        Op::Lt,                 // 18
+        Op::JumpIfFalse(31),    // 19
+        Op::LoadState(0),       // 20
+        Op::Push(5.0),          // 21
+        Op::Add,                // 22
+        Op::Push(0.6133),       // 23
+        Op::LoadState(0),       // 24
+        Op::Mul,                // 25
+        Op::Push(220.788),      // 26
+        Op::Sub,                // 27
+        Op::Cos,                // 28
+        Op::Sub,                // 29
+        Op::Jump(36),           // 30
+        Op::Push(1.2933),       // 31
+        Op::LoadState(0),       // 32
+        Op::Mul,                // 33
+        Op::Push(161.181),      // 34
+        Op::Sub,                // 35
+        Op::Ret,                // 36
+    ];
+    let v = Verified::new(one(code, 1, 0)).expect("should verify");
+
+    // Each arm is selected on its own interval. Arm 1 is a literal, so it is exact.
+    assert_eq!(v.eval(&[344.99]).unwrap(), 350.1);
+    assert_eq!(v.eval(&[350.0]).unwrap(), 354.7335);
+
+    // The arms are tuned to MEET at the breakpoints, but they meet in real arithmetic, not in
+    // `f32`. Each boundary therefore carries a small step. These are the measured widths, and
+    // they are asserted rather than tolerated loosely: a change to the constants or to the
+    // evaluation order would move them, and that is worth a failing test.
+    //
+    //   s = 345   arm1 350.1000061  arm2 350.0999756   step 3.05e-05
+    //   s = 360   arm2 364.0004883  arm3 364.0000000   step 4.88e-04
+    //   s = 570   arm3 575.9999390  arm4 576.0000000   step 6.10e-05
+    let at = |s: f32| v.eval(&[s]).unwrap();
+    assert!((at(345.0) - 350.1).abs() < 1e-4, "got {}", at(345.0));
+    assert!((at(360.0) - 364.0).abs() < 1e-3, "got {}", at(360.0));
+    assert!((at(570.0) - 576.0).abs() < 1e-4, "got {}", at(570.0));
+    assert!((at(700.0) - 744.129).abs() < 1e-3, "got {}", at(700.0));
+
+    // Proof A over four paths. The deepest is the arm holding the cosine.
+    assert_eq!(v.bounds().stack, 3);
+}
+
+#[test]
+fn a_branchless_blend_and_a_branch_agree_bit_for_bit() {
+    // The shape this language replaces: `mix(a, b, step(edge, x))` encodes a choice as
+    // arithmetic, so it computes BOTH arms and discards one.
+    //
+    // The two forms agree exactly, in `f32`, and not merely closely: `step` yields exactly
+    // 0.0 or 1.0, and `mix` at t = 0 is `1.0*a + 0.0*b`. Multiplying by exact 0.0 and 1.0 is
+    // exact in any precision, so no rounding enters.
+    //
+    // What the branch buys is not accuracy. It is that the unused arm is never evaluated.
+    let flat = |s: f32| {
+        eval(
+            vec![
+                Op::Push(2.0),      // a
+                Op::LoadState(0),   // b = s * 3
+                Op::Push(3.0),
+                Op::Mul,
+                Op::Push(10.0),     // edge
+                Op::LoadState(0),   // x
+                Op::Step,
+                Op::Mix,
+                Op::Ret,
+            ],
+            &[s],
+        )
+    };
+    let branched = |s: f32| {
+        eval(
+            vec![
+                Op::LoadState(0),
+                Op::Push(10.0),
+                Op::Lt,
+                Op::JumpIfFalse(6),
+                Op::Push(2.0),
+                Op::Jump(9),
+                Op::LoadState(0),
+                Op::Push(3.0),
+                Op::Mul,
+                Op::Ret,
+            ],
+            &[s],
+        )
+    };
+    for i in 0..2000 {
+        let s = i as f32 * 0.01;
+        assert_eq!(flat(s), branched(s), "forms diverged at s = {}", s);
+    }
+}
+
 // ── 2. the proof accepts, and reports real bounds ───────────────────────────────
 
 #[test]
@@ -170,6 +335,97 @@ fn reject(p: Program, want: VerifyError) {
         Ok(_) => panic!("expected rejection with {:?}, but the program verified", want),
         Err(got) => assert_eq!(got, want, "wrong rejection reason"),
     }
+}
+
+#[test]
+fn rejects_a_backward_jump() {
+    // A backward jump is a loop. The language has no loop form, so no legal program emits one,
+    // and allowing one would let a malformed program spin forever inside a single call.
+    reject(
+        one(
+            vec![Op::Push(1.0), Op::Jump(0), Op::Ret],
+            0,
+            0,
+        ),
+        VerifyError::BackwardJump,
+    );
+}
+
+#[test]
+fn rejects_a_jump_out_of_its_own_function() {
+    // Index 4 is a real instruction, but it belongs to the second function. Proof A checks one
+    // function at a time, so a jump across the boundary would escape it.
+    let program = Program {
+        code: vec![
+            // main — entry 0
+            Op::Push(1.0),
+            Op::Jump(4),
+            Op::Ret,
+            // other — entry 3
+            Op::Push(2.0),
+            Op::Ret,
+        ],
+        funcs: vec![
+            Func {
+                entry: 0,
+                len: 3,
+                arity: 0,
+                frame: 0,
+            },
+            Func {
+                entry: 3,
+                len: 2,
+                arity: 0,
+                frame: 0,
+            },
+        ],
+        state_arity: 0,
+    };
+    reject(program, VerifyError::BadJumpTarget);
+}
+
+#[test]
+fn rejects_two_jumps_that_disagree_at_one_target() {
+    // Both jumps land on index 6. The first leaves zero values, the second leaves two. The
+    // table catches it when the second jump writes, before either path arrives.
+    reject(
+        one(
+            vec![
+                Op::Push(1.0),
+                Op::JumpIfFalse(6), // height 0 at 6
+                Op::Push(1.0),
+                Op::Push(2.0),
+                Op::Jump(6), // height 2 at 6
+                Op::Push(3.0),
+                Op::Ret,
+            ],
+            0,
+            0,
+        ),
+        VerifyError::HeightMismatch,
+    );
+}
+
+#[test]
+fn rejects_arms_that_leave_different_heights() {
+    // The `then` arm leaves two values, the `else` arm leaves one. A single accumulating scan
+    // would miss this. The height recorded for the join does not match on arrival.
+    reject(
+        one(
+            vec![
+                Op::Push(1.0),
+                Op::JumpIfFalse(5),
+                Op::Push(1.0),
+                Op::Push(2.0), // two values on this path
+                Op::Jump(6),
+                Op::Push(3.0), // one value on this path
+                Op::Ret,
+            ],
+            0,
+            0,
+        ),
+        VerifyError::HeightMismatch,
+    );
 }
 
 #[test]
@@ -213,6 +469,18 @@ fn rejects_a_missing_ret() {
 }
 
 #[test]
+fn rejects_unreachable_code() {
+    reject(
+        one(
+            vec![Op::Push(1.0), Op::Jump(3), Op::Push(2.0), Op::Ret],
+            0,
+            0,
+        ),
+        VerifyError::Unreachable,
+    );
+}
+
+#[test]
 fn rejects_an_empty_program() {
     reject(
         Program {
@@ -235,6 +503,8 @@ fn every_error_has_a_distinct_code() {
         VerifyError::MissingRet,
         VerifyError::BadStateIndex,
         VerifyError::BadLocalIndex,
+        VerifyError::BadJumpTarget,
+        VerifyError::BackwardJump,
         VerifyError::HeightMismatch,
         VerifyError::Unreachable,
         VerifyError::StackUnderflow,

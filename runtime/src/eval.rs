@@ -3,11 +3,14 @@
 //! One loop over a program counter, on one fixed array. No allocation, no heap, no recursion in
 //! the evaluator itself.
 //!
+//! The loop is driven by an explicit `pc` rather than by iterating the instruction slice,
+//! because an iterator cannot jump. That single change is what the branch instructions need.
+//!
 //! Nothing here checks an index. Every index is in range because `Verified` can only be built
 //! by `verify`, and the proof there is exactly the guarantee this loop relies on:
 //!
 //! * Proof A bounds `top`, so the operand stack never overflows and never underflows.
-//! * The program has no jump, so every instruction runs once and the loop ends at `Ret`.
+//! * Forward-only jumps bound the number of steps, so the loop ends.
 
 use crate::op::{Op, Program};
 use crate::verify::{verify, Bounds, VerifyError, MAX_STACK};
@@ -190,11 +193,56 @@ fn run(p: &Program, state: &[f32]) -> f32 {
                 pc += 1;
             }
 
+            // ── comparison ──────────────────────────────────────────────────
+            // 1.0 for true, 0.0 for false, so a truth value needs no extra representation.
+            Op::Lt => {
+                top -= 1;
+                stack[top - 1] = bool_f32(stack[top - 1] < stack[top]);
+                pc += 1;
+            }
+            Op::Gt => {
+                top -= 1;
+                stack[top - 1] = bool_f32(stack[top - 1] > stack[top]);
+                pc += 1;
+            }
+            Op::Le => {
+                top -= 1;
+                stack[top - 1] = bool_f32(stack[top - 1] <= stack[top]);
+                pc += 1;
+            }
+            Op::Ge => {
+                top -= 1;
+                stack[top - 1] = bool_f32(stack[top - 1] >= stack[top]);
+                pc += 1;
+            }
+            Op::Eq => {
+                top -= 1;
+                stack[top - 1] = bool_f32(stack[top - 1] == stack[top]);
+                pc += 1;
+            }
+
             // ── control flow ────────────────────────────────────────────────
+            Op::Jump(t) => {
+                pc = t as usize;
+            }
+            Op::JumpIfFalse(t) => {
+                top -= 1;
+                pc = if stack[top] == 0.0 { t as usize } else { pc + 1 };
+            }
+
             Op::Ret => {
                 // The entry function has returned. Its single value is the result.
                 return stack[0];
             }
         }
+    }
+}
+
+#[inline]
+fn bool_f32(b: bool) -> f32 {
+    if b {
+        1.0
+    } else {
+        0.0
     }
 }

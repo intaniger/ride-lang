@@ -6,13 +6,15 @@
 //!
 //! **Proof A — the operand stack, per function.**
 //!
-//! Walk the function once and track how many values sit on the stack. Each instruction pops a
-//! known number and pushes a known number, so the height after it is known. The walk rejects an
-//! underflow, an overflow, and a function that does not leave exactly one result.
+//! A single accumulating pass over the instruction array is sound only for straight-line code.
+//! It assumes the next instruction always runs after this one, and a jump breaks that: the
+//! running total then describes no real execution.
 //!
-//! The walk keeps a table of heights, one slot per instruction, and checks it on arrival at an
-//! index that holds a recorded height. Straight-line code records only the entry. Control flow
-//! will write the rest.
+//! The fix is a height table checked at the target instead of accumulated. Each jump writes the
+//! height it leaves behind into `expected[target]`. On arrival at an index that holds a recorded
+//! height, the height carried must equal it. Two jumps to one target must agree. This is the
+//! same rule a WebAssembly validator applies at a block boundary, and it is sound here only
+//! because jumps are forward-only.
 
 use crate::op::{Op, Program};
 
@@ -33,6 +35,8 @@ pub enum VerifyError {
     MissingRet,
     BadStateIndex,
     BadLocalIndex,
+    BadJumpTarget,
+    BackwardJump,
     HeightMismatch,
     Unreachable,
     StackUnderflow,
@@ -50,6 +54,8 @@ impl VerifyError {
             VerifyError::MissingRet => "missing_ret",
             VerifyError::BadStateIndex => "bad_state_index",
             VerifyError::BadLocalIndex => "bad_local_index",
+            VerifyError::BadJumpTarget => "bad_jump_target",
+            VerifyError::BackwardJump => "backward_jump",
             VerifyError::HeightMismatch => "height_mismatch",
             VerifyError::Unreachable => "unreachable",
             VerifyError::StackUnderflow => "stack_underflow",
@@ -89,6 +95,37 @@ pub fn verify(p: &Program) -> Result<Bounds, VerifyError> {
 }
 
 // ── Proof A ─────────────────────────────────────────────────────────────────────
+
+/// Record the height a jump leaves behind, at its target.
+///
+/// Rejects a target outside this function and a target that is not strictly ahead. Rejects a
+/// second write that disagrees with the first — that is two paths reaching one point with
+/// different stacks, which no well-formed program does.
+fn record(
+    expected: &mut [Option<i64>],
+    lo: usize,
+    hi: usize,
+    pc: usize,
+    target: u32,
+    height: i64,
+) -> Result<(), VerifyError> {
+    let t = target as usize;
+    if t < lo || t >= hi {
+        return Err(VerifyError::BadJumpTarget);
+    }
+    if t <= pc {
+        return Err(VerifyError::BackwardJump);
+    }
+    let slot = &mut expected[t - lo];
+    match *slot {
+        None => {
+            *slot = Some(height);
+            Ok(())
+        }
+        Some(e) if e == height => Ok(()),
+        Some(_) => Err(VerifyError::HeightMismatch),
+    }
+}
 
 /// Proof A for one function. Returns the deepest operand stack any path through it reaches.
 fn verify_func(p: &Program, fi: usize) -> Result<usize, VerifyError> {
@@ -158,7 +195,12 @@ fn verify_func(p: &Program, fi: usize) -> Result<usize, VerifyError> {
             | Op::Pow
             | Op::Max
             | Op::Min
-            | Op::Step => {
+            | Op::Step
+            | Op::Lt
+            | Op::Gt
+            | Op::Le
+            | Op::Ge
+            | Op::Eq => {
                 need!(2);
                 cur -= 1;
             }
@@ -178,6 +220,19 @@ fn verify_func(p: &Program, fi: usize) -> Result<usize, VerifyError> {
             Op::Select => {
                 need!(4);
                 cur -= 3;
+            }
+
+            Op::Jump(t) => {
+                record(&mut expected, lo, hi, pc, t, cur)?;
+                height = None; // this path ends here
+                continue;
+            }
+            Op::JumpIfFalse(t) => {
+                need!(1);
+                cur -= 1; // the test is consumed either way
+                record(&mut expected, lo, hi, pc, t, cur)?;
+                height = Some(cur); // the fall-through path continues
+                continue;
             }
 
             Op::Ret => {

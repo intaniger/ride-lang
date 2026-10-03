@@ -6,23 +6,25 @@
 //! ```
 //! use ride_runtime::{Func, Op, Program, Verified};
 //!
-//! // let main = s * 2 + 1        (s is state field 0)
+//! // let main = if s < 10.0 then 1.0 else 2.0        (s is state field 0)
 //! let program = Program {
 //!     code: vec![
 //!         Op::LoadState(0),
-//!         Op::Push(2.0),
-//!         Op::Mul,
+//!         Op::Push(10.0),
+//!         Op::Lt,
+//!         Op::JumpIfFalse(6),
 //!         Op::Push(1.0),
-//!         Op::Add,
+//!         Op::Jump(7),
+//!         Op::Push(2.0),
 //!         Op::Ret,
 //!     ],
-//!     funcs: vec![Func { entry: 0, len: 6, arity: 0, frame: 0 }],
+//!     funcs: vec![Func { entry: 0, len: 8, arity: 0, frame: 0 }],
 //!     state_arity: 1,
 //! };
 //!
 //! let v = Verified::new(program).expect("the proof passes");
-//! assert_eq!(v.eval(&[3.0]).unwrap(), 7.0);
-//! assert_eq!(v.eval(&[10.0]).unwrap(), 21.0);
+//! assert_eq!(v.eval(&[3.0]).unwrap(), 1.0);
+//! assert_eq!(v.eval(&[30.0]).unwrap(), 2.0);
 //! ```
 //!
 //! ## Structure

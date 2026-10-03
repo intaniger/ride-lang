@@ -48,7 +48,24 @@ pub enum Op {
     /// `select(edge, x, a, b)` = `a` when `x < edge`, else `b`.
     Select,
 
+    // ── comparison ──────────────────────────────────────────────────────────
+    // Each pushes 1.0 for true and 0.0 for false. A truth value is therefore one `f32` wide,
+    // so the value representation stays untagged and `if` costs no extra machine word.
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+
     // ── control flow ────────────────────────────────────────────────────────
+    /// Unconditional jump to an absolute index in `Program::code`.
+    ///
+    /// **Forward only.** The language has no loop form and no recursion, so no legal program
+    /// needs a backward jump. `verify` rejects one, which is what stops a malformed program
+    /// from spinning forever inside a single call.
+    Jump(u32),
+    /// Pop one value. Jump when it is 0.0, otherwise continue. Forward only.
+    JumpIfFalse(u32),
     /// Return. The result stays on the operand stack.
     Ret,
 }
