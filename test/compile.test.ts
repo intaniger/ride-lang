@@ -71,8 +71,17 @@ describe('numbers in, one number out', () => {
 });
 
 describe('operators', () => {
+    test('power is right-associative', async () => {
+        // 2^(3^2) = 512, not (2^3)^2 = 64
+        expect(run(await build('let main = 2^3^2'))).toBe(512);
+    });
+
     test('multiplication binds tighter than addition', async () => {
         expect(run(await build('let main = 1 + 2 * 3'))).toBe(7);
+    });
+
+    test('unary minus', async () => {
+        expect(run(await build('let main = -(3 - 5)'))).toBe(2);
     });
 
     test('operators on one level associate left', async () => {
@@ -91,6 +100,26 @@ describe('operators', () => {
             { op: 'Push', value: 4 },
             { op: 'Mul' },
             { op: 'Add' },
+            { op: 'Ret' },
+        ]);
+    });
+
+    test('power binds tighter than multiplication', async () => {
+        // 2 * (3^2) = 18, not (2 * 3)^2 = 36
+        expect(run(await build('let main = 2 * 3^2'))).toBe(18);
+    });
+
+    test('unary minus binds tighter than power', async () => {
+        // (-2)^2 = 4, not -(2^2) = -4
+        expect(run(await build('let main = -2^2'))).toBe(4);
+    });
+
+    test('unary minus is one Neg, not a subtraction from zero', async () => {
+        expect((await build('let main = -(3 - 5)')).code).toEqual([
+            { op: 'Push', value: 3 },
+            { op: 'Push', value: 5 },
+            { op: 'Sub' },
+            { op: 'Neg' },
             { op: 'Ret' },
         ]);
     });

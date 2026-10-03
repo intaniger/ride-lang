@@ -20,6 +20,7 @@ import type {
 import {
     isBinary,
     isFunDecl,
+    isNegate,
     isNumberLiteral,
     isRef,
     isStateDecl,
@@ -34,7 +35,7 @@ export type Op =
 
 /** Every operation that carries no immediate. */
 type Nullary =
-    | 'Add' | 'Sub' | 'Mul' | 'Div'
+    | 'Add' | 'Sub' | 'Mul' | 'Div' | 'Pow' | 'Neg'
     | 'Ret';
 
 export interface Func {
@@ -66,6 +67,7 @@ const ARITHMETIC: Record<string, Nullary> = {
     '-': 'Sub',
     '*': 'Mul',
     '/': 'Div',
+    '^': 'Pow',
 };
 
 /** The function evaluation starts from. */
@@ -156,6 +158,12 @@ function emitFunction(
             }
             errors.push({ message: `unknown name \`${e.name}\``, at: e.name });
             code.push({ op: 'Push', value: 0 }); // keep the stack shape for later checks
+            return;
+        }
+
+        if (isNegate(e)) {
+            walk(e.operand);
+            code.push({ op: 'Neg' });
             return;
         }
 

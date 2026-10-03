@@ -48,6 +48,8 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
             case 'Sub': bin(stack, (a, b) => a - b); pc++; break;
             case 'Mul': bin(stack, (a, b) => a * b); pc++; break;
             case 'Div': bin(stack, (a, b) => a / b); pc++; break;
+            case 'Pow': bin(stack, (a, b) => Math.pow(a, b)); pc++; break;
+            case 'Neg': un(stack, (a) => -a); pc++; break;
 
             case 'Ret':
                 return stack[0];
@@ -64,4 +66,8 @@ function bin(stack: number[], f: (a: number, b: number) => number): void {
     const b = stack.pop()!;
     const a = stack.pop()!;
     stack.push(f32(f(a, b)));
+}
+
+function un(stack: number[], f: (a: number) => number): void {
+    stack.push(f32(f(stack.pop()!)));
 }

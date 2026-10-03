@@ -126,7 +126,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@13"
+            "$ref": "#/rules@15"
           },
           "arguments": []
         }
@@ -152,7 +152,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@13"
+                "$ref": "#/rules@15"
               },
               "arguments": []
             }
@@ -331,6 +331,116 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
     },
     {
       "$type": "ParserRule",
+      "name": "Power",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@9"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Action",
+                "inferredType": {
+                  "$type": "InferredType",
+                  "name": "Binary"
+                },
+                "feature": "left",
+                "operator": "="
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operator",
+                "operator": "=",
+                "terminal": {
+                  "$type": "Keyword",
+                  "value": "^"
+                }
+              },
+              {
+                "$type": "Assignment",
+                "feature": "right",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@8"
+                  },
+                  "arguments": []
+                }
+              }
+            ],
+            "cardinality": "?"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "Unary",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Action",
+                "inferredType": {
+                  "$type": "InferredType",
+                  "name": "Negate"
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": "-"
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operand",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@9"
+                  },
+                  "arguments": []
+                }
+              }
+            ]
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@10"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
       "name": "Primary",
       "inferredType": {
         "$type": "InferredType",
@@ -356,7 +466,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@12"
+                    "$ref": "#/rules@14"
                   },
                   "arguments": []
                 }
@@ -380,7 +490,7 @@ export const RideGrammar = (): Grammar => loadedRideGrammar ?? (loadedRideGramma
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@13"
+                    "$ref": "#/rules@15"
                   },
                   "arguments": []
                 }

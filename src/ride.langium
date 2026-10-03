@@ -33,7 +33,15 @@ Additive infers Expression:
     Multiplicative ({infer Binary.left=current} operator=('+' | '-') right=Multiplicative)*;
 
 Multiplicative infers Expression:
-    Primary ({infer Binary.left=current} operator=('*' | '/') right=Primary)*;
+    Power ({infer Binary.left=current} operator=('*' | '/') right=Power)*;
+
+// Right-associative, so `2^3^2` is `2^(3^2)`.
+Power infers Expression:
+    Unary ({infer Binary.left=current} operator='^' right=Power)?;
+
+Unary infers Expression:
+    {infer Negate} '-' operand=Unary
+    | Primary;
 
 Primary infers Expression:
     {infer NumberLiteral} value=NUMBER

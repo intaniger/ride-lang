@@ -25,6 +25,7 @@ export type RideKeywordNames =
     | "-"
     | "/"
     | "="
+    | "^"
     | "let"
     | "state"
     | "{"
@@ -33,10 +34,10 @@ export type RideKeywordNames =
 export type RideTokenNames = RideTerminalNames | RideKeywordNames;
 
 export interface Binary extends langium.AstNode {
-    readonly $container: Binary | FunDecl;
+    readonly $container: Binary | FunDecl | Negate;
     readonly $type: 'Binary';
     left: Expression;
-    operator: '*' | '+' | '-' | '/';
+    operator: '*' | '+' | '-' | '/' | '^';
     right: Expression;
 }
 
@@ -61,7 +62,7 @@ export function isDeclaration(item: unknown): item is Declaration {
     return reflection.isInstance(item, Declaration.$type);
 }
 
-export type Expression = Binary | NumberLiteral | Ref;
+export type Expression = Binary | Negate | NumberLiteral | Ref;
 
 export const Expression = {
     $type: 'Expression'
@@ -88,8 +89,23 @@ export function isFunDecl(item: unknown): item is FunDecl {
     return reflection.isInstance(item, FunDecl.$type);
 }
 
+export interface Negate extends langium.AstNode {
+    readonly $container: Binary | FunDecl | Negate;
+    readonly $type: 'Negate';
+    operand: Expression;
+}
+
+export const Negate = {
+    $type: 'Negate',
+    operand: 'operand'
+} as const;
+
+export function isNegate(item: unknown): item is Negate {
+    return reflection.isInstance(item, Negate.$type);
+}
+
 export interface NumberLiteral extends langium.AstNode {
-    readonly $container: Binary | FunDecl;
+    readonly $container: Binary | FunDecl | Negate;
     readonly $type: 'NumberLiteral';
     value: number;
 }
@@ -118,7 +134,7 @@ export function isProgram(item: unknown): item is Program {
 }
 
 export interface Ref extends langium.AstNode {
-    readonly $container: Binary | FunDecl;
+    readonly $container: Binary | FunDecl | Negate;
     readonly $type: 'Ref';
     name: string;
 }
@@ -167,6 +183,7 @@ export type RideAstType = {
     Declaration: Declaration
     Expression: Expression
     FunDecl: FunDecl
+    Negate: Negate
     NumberLiteral: NumberLiteral
     Program: Program
     Ref: Ref
@@ -214,6 +231,15 @@ export class RideAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [Declaration.$type]
+        },
+        Negate: {
+            name: Negate.$type,
+            properties: {
+                operand: {
+                    name: Negate.operand
+                }
+            },
+            superTypes: [Expression.$type]
         },
         NumberLiteral: {
             name: NumberLiteral.$type,
