@@ -223,8 +223,8 @@ flowchart TD
   end
 
   subgraph T["Tests"]
-    FT["test/compile.test.ts<br/>39 tests"]
-    RTT["runtime/tests/runtime.rs<br/>26 tests"]
+    FT["test/compile.test.ts<br/>69 tests"]
+    RTT["runtime/tests/runtime.rs<br/>35 tests"]
     DIF["scripts/differential.mjs<br/>→ runtime/tests/differential.rs"]
   end
 

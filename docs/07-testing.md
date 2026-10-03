@@ -32,14 +32,14 @@ npm run check                # the gate: both suites
 
 | Command | Runs | Needs the network | Defined in |
 |---------|------|-------------------|------------|
-| `npm test` | 39 front-end tests, vitest | no, after install | `package.json:22` |
-| `npm run test:runtime` | 26 runtime + 2 differential + 1 doctest, cargo | **no, ever** | `package.json:25` |
+| `npm test` | 69 front-end tests, vitest | no, after install | `package.json:22` |
+| `npm run test:runtime` | 35 runtime + 2 differential + 1 doctest, cargo | **no, ever** | `package.json:25` |
 | `npm run check` | both of the above | no, after install | `package.json:26` |
 | `npx tsc --noEmit` | typecheck | no | — |
 | `npm run langium:generate` | regenerate the parser and AST | no | `package.json:18` |
 | `npm run build:wasm` | compile the runtime to wasm | no | `package.json:25` |
 
-**Current state, measured on 2026-10-03:** 39 + 26 + 2 + 1 = **68 tests, all passing.**
+**Current state, measured on 2026-10-04:** 69 + 35 + 2 + 1 = **107 tests, all passing.**
 
 The runtime half runs against an empty dependency graph, so `cargo test` works with no npm and no
 network. `runtime/Cargo.toml:12`
@@ -63,11 +63,11 @@ network. `runtime/Cargo.toml:12`
 ```mermaid
 flowchart TD
   G["src/ride.langium"] --> FT
-  C["src/compile.ts"] --> FT["<b>test/compile.test.ts</b><br/>39 tests<br/><i>surface → bytecode</i>"]
+  C["src/compile.ts"] --> FT["<b>test/compile.test.ts</b><br/>69 tests<br/><i>surface → bytecode</i>"]
   EVT["src/evaluate.ts"] --> FT
 
   OP["runtime/src/op.rs"] --> RT
-  VER["runtime/src/verify.rs"] --> RT["<b>runtime/tests/runtime.rs</b><br/>26 tests<br/><i>proofs + evaluator</i>"]
+  VER["runtime/src/verify.rs"] --> RT["<b>runtime/tests/runtime.rs</b><br/>35 tests<br/><i>proofs + evaluator</i>"]
   RUN["runtime/src/eval.rs"] --> RT
 
   EVT --> DH["<b>scripts/differential.mjs</b><br/>→ runtime/tests/differential.rs<br/>2 tests, 802 samples"]
@@ -80,12 +80,12 @@ the drift risk in Part 1 §05 row 3. `scripts/differential.mjs:1` · `src/evalua
 
 | Suite | Tests | Protects |
 |-------|-------|----------|
-| `test/compile.test.ts` | 39 | The surface language, the exact bytecode for small programs, every diagnostic message, and the first-order and no-recursion rules |
-| `runtime/tests/runtime.rs` | 26 | Both proofs, every evaluator arm, the 20 error codes, and thirteen rejections of malformed bytecode |
+| `test/compile.test.ts` | 69 | The surface language, the exact bytecode for small programs, every diagnostic message, and the first-order and no-recursion rules |
+| `runtime/tests/runtime.rs` | 35 | Both proofs, every evaluator arm, the 20 error codes, and seventeen rejections of malformed bytecode |
 | `runtime/tests/differential.rs` | 2 | That the two evaluators agree over 802 sampled inputs |
 | the doctest in `runtime/src/lib.rs` | 1 | That the example in the crate documentation compiles and gives the stated answer |
 
-Three front-end tests assert the **exact instruction list**, not just the result. One is in Part 3
+Nine front-end tests assert the **exact instruction list**, not just the result. One is in Part 3
 §08. Those are the tests that catch an emitter change nobody intended.
 
 ---
@@ -139,29 +139,33 @@ That message is the harness earning its place. It names the example, the input, 
 
 ## 04 · The hostile-program suite
 
-Thirteen tests in `runtime/tests/runtime.rs` feed `verify` bytecode that no compiler would produce.
+Seventeen tests in `runtime/tests/runtime.rs` feed `verify` bytecode that no compiler would produce.
 This is the suite that protects the evaluator's unchecked indexing.
 
 | Test | Hand-built fault | Expected code |
 |------|------------------|---------------|
 | `rejects_a_backward_jump` | `Jump(0)` at index 1 | `backward_jump` |
+| `rejects_a_jump_out_of_its_own_function` | `Jump(4)` into the next function's code | `bad_jump_target` |
+| `rejects_two_jumps_that_disagree_at_one_target` | two jumps record heights 0 and 2 at one index | `height_mismatch` |
 | `rejects_arms_that_leave_different_heights` | one arm pushes two values, the other pushes one | `height_mismatch` |
 | `rejects_a_call_graph_cycle` | `f` calls `g`, `g` calls `f` | `call_graph_cycle` |
 | `rejects_self_recursion` | `f` calls `f` | `call_graph_cycle` |
 | `rejects_reading_past_the_state_record` | `LoadState(3)` with `state_arity` 2 | `bad_state_index` |
 | `rejects_reading_past_the_frame_window` | `LoadLocal(2)` with `frame` 1 | `bad_local_index` |
 | `rejects_a_stack_underflow` | `Add` with an empty stack | `stack_underflow` |
+| `rejects_a_stack_overflow` | 33 values live at once, one past the ceiling | `stack_overflow` |
 | `rejects_a_function_that_does_not_leave_exactly_one_value` | two pushes, then `Ret` | `not_one_result` |
 | `rejects_a_missing_ret` | a function with no `Ret` | `missing_ret` |
 | `rejects_a_call_to_a_non_entry_point` | `Call { target: 99 }` | `bad_call_target` |
 | `rejects_an_arity_mismatch` | callee declares 2, call site passes 1 | `arity_mismatch` |
+| `rejects_a_call_whose_frame_delta_is_not_the_caller_frame` | `fp_delta` 1 from a caller with frame 0 | `frame_delta_mismatch` |
 | `rejects_unreachable_code` | a `Jump` over a live instruction | `unreachable` |
 | `rejects_an_empty_program` | no functions | `no_functions` |
 
 Each test asserts the **exact** error, not merely that an error occurred. A test that accepted any
 rejection would pass while the verifier rejected for the wrong reason.
 
-A fourteenth test, `rejects_a_state_record_that_is_too_short`, belongs to a different layer. It
+An eighteenth test, `rejects_a_state_record_that_is_too_short`, belongs to a different layer. It
 checks `EvalError`, not `VerifyError`, because a short STATE record is a property of the **call**
 and not of the program. Part 6 §07 holds that one.
 

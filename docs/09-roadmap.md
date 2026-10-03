@@ -35,7 +35,7 @@ flowchart LR
     C["compiler<br/>5 stages, 465 lines"]
     V["both proofs<br/>405 lines"]
     E["evaluator<br/>297 lines"]
-    T["68 tests"]
+    T["107 tests"]
   end
 
   subgraph gap["THE GAP"]
@@ -61,12 +61,12 @@ flowchart LR
 cannot yet deliver a compiled program to the runtime it was built for.
 `scripts/differential.mjs:1` · `package.json:25`
 
-**68 tests pass**, measured on 2026-10-03: 39 front-end, 26 runtime, 2 differential, 1 doctest.
+**107 tests pass**, measured on 2026-10-04: 69 front-end, 35 runtime, 2 differential, 1 doctest.
 
 | Half | State | Evidence |
 |------|-------|----------|
-| Front end | Complete for the current language | 39 tests, exact bytecode assertions |
-| Runtime | Complete | 26 tests, including 13 malformed-bytecode rejections |
+| Front end | Complete for the current language | 69 tests, exact bytecode assertions |
+| Runtime | Complete | 35 tests, including 17 malformed-bytecode rejections |
 | The seam between them | **Missing** | `npm run build:wasm` produces a module with zero exports |
 
 ---

@@ -135,7 +135,7 @@ answers. Until one is chosen, the language stays single-type.
 
 ## Status
 
-A scaffold, and green: 39 front-end tests, 26 runtime tests, 2 differential tests, 1 doctest.
+A scaffold, and green: 69 front-end tests, 35 runtime tests, 2 differential tests, 1 doctest.
 The grammar, the five compiler stages, both proofs, the evaluator and the differential harness
 are in place.
 
