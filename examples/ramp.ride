@@ -1,0 +1,15 @@
+// A piecewise ramp: the shape this language exists to express.
+//
+// One state field in, one number out. Three ascending breakpoints, and a transcendental
+// that is only evaluated on the arm that needs it.
+
+state { s }
+
+// Shared by more than one arm, so it is named once rather than written twice.
+let phase x = 0.6133x - 220.788
+
+let main =
+    if s < 345 then 350.1
+    else if s < 360 then 0.9267s + 30.3885
+    else if s < 570 then s + 5 - cos(phase(s))
+    else 1.2933s - 161.181

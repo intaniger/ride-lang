@@ -1,0 +1,15 @@
+// A ballistic arc, with a local binding so the normalised clock is computed once.
+//
+// `u` appears three times in the body. Writing `(t - t0) / dur` three times would be three
+// places for the same number to go stale, which is the reason `let … in` exists.
+
+state { t }
+
+let launch_speed_to_peak peak = sqrt(19.6 peak)
+
+let arc e0 v0 u = e0 + v0 u - 4.9(u^2)
+
+let main =
+    let u = clamp(t / 3, 0, 1) in
+    if u < 1 then arc(2, launch_speed_to_peak(20), u)
+    else 2
