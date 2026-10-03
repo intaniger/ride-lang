@@ -48,7 +48,8 @@ Juxtaposition infers Expression:
     Primary ({infer ImplicitMul.left=current} right=Primary)*;
 
 Primary infers Expression:
-    {infer NumberLiteral} value=NUMBER
+    {infer Call} callee=ID '(' (args+=Expression (',' args+=Expression)*)? ')'
+    | {infer NumberLiteral} value=NUMBER
     | {infer Ref} name=ID
     | '(' Expression ')';
 

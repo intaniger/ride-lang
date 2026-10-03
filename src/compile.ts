@@ -19,6 +19,7 @@ import type {
 } from './generated/ast.js';
 import {
     isBinary,
+    isCall,
     isFunDecl,
     isImplicitMul,
     isNegate,
@@ -37,6 +38,8 @@ export type Op =
 /** Every operation that carries no immediate. */
 type Nullary =
     | 'Add' | 'Sub' | 'Mul' | 'Div' | 'Pow' | 'Neg'
+    | 'Sin' | 'Cos' | 'Sqrt' | 'Abs' | 'Sign' | 'Exp'
+    | 'Max' | 'Min' | 'Step' | 'Mix' | 'Clamp' | 'Select'
     | 'Ret';
 
 export interface Func {
@@ -62,6 +65,24 @@ export interface Diagnostic {
 export type CompileResult =
     | { ok: true; bytecode: Bytecode }
     | { ok: false; errors: Diagnostic[] };
+
+// ── builtins ────────────────────────────────────────────────────────────────────
+
+/** The twelve builtins, with their arity. Argument order matches the runtime's stack order. */
+const BUILTINS: Record<string, { arity: number; op: Nullary }> = {
+    sin: { arity: 1, op: 'Sin' },
+    cos: { arity: 1, op: 'Cos' },
+    sqrt: { arity: 1, op: 'Sqrt' },
+    abs: { arity: 1, op: 'Abs' },
+    sign: { arity: 1, op: 'Sign' },
+    exp: { arity: 1, op: 'Exp' },
+    max: { arity: 2, op: 'Max' },
+    min: { arity: 2, op: 'Min' },
+    step: { arity: 2, op: 'Step' },
+    mix: { arity: 3, op: 'Mix' },
+    clamp: { arity: 3, op: 'Clamp' },
+    select: { arity: 4, op: 'Select' },
+};
 
 const ARITHMETIC: Record<string, Nullary> = {
     '+': 'Add',
@@ -184,6 +205,25 @@ function emitFunction(
                 return;
             }
             code.push({ op });
+            return;
+        }
+
+        if (isCall(e)) {
+            const builtin = BUILTINS[e.callee];
+            if (builtin) {
+                if (e.args.length !== builtin.arity) {
+                    errors.push({
+                        message: `\`${e.callee}\` takes ${builtin.arity} argument(s), got ${e.args.length}`,
+                        at: e.callee,
+                    });
+                }
+                e.args.forEach(walk);
+                code.push({ op: builtin.op });
+                return;
+            }
+
+            errors.push({ message: `unknown function \`${e.callee}\``, at: e.callee });
+            code.push({ op: 'Push', value: 0 });
             return;
         }
 

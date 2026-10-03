@@ -6,6 +6,11 @@
 // Every arithmetic result passes through `Math.fround`, because the runtime works in `f32` and
 // JavaScript numbers are `f64`. Without that rounding the answers would drift from the ones the
 // runtime gives, and the comparison would be worthless.
+//
+// ONE CAVEAT, stated rather than hidden: the transcendentals are not exact. `Math.cos` computes
+// in `f64` and is rounded to `f32` here, while a machine that computes in `f32` throughout can
+// differ in the last bit. Treat this evaluator as exact for arithmetic, and as approximate for
+// `sin cos sqrt exp pow`.
 
 import type { Bytecode, Op } from './compile.js';
 
@@ -50,6 +55,52 @@ export function evaluate(bytecode: Bytecode, state: readonly number[]): number {
             case 'Div': bin(stack, (a, b) => a / b); pc++; break;
             case 'Pow': bin(stack, (a, b) => Math.pow(a, b)); pc++; break;
             case 'Neg': un(stack, (a) => -a); pc++; break;
+
+            case 'Sin': un(stack, Math.sin); pc++; break;
+            case 'Cos': un(stack, Math.cos); pc++; break;
+            case 'Sqrt': un(stack, Math.sqrt); pc++; break;
+            case 'Abs': un(stack, Math.abs); pc++; break;
+            case 'Exp': un(stack, Math.exp); pc++; break;
+            case 'Sign':
+                // The sign of zero is zero, not one.
+                un(stack, (a) => (a === 0 ? 0 : Math.sign(a)));
+                pc++;
+                break;
+
+            case 'Max': bin(stack, (a, b) => Math.max(a, b)); pc++; break;
+            case 'Min': bin(stack, (a, b) => Math.min(a, b)); pc++; break;
+            case 'Step': {
+                const x = stack.pop()!;
+                const edge = stack.pop()!;
+                stack.push(x < edge ? 0 : 1);
+                pc++;
+                break;
+            }
+            case 'Mix': {
+                const t = stack.pop()!;
+                const b = stack.pop()!;
+                const a = stack.pop()!;
+                stack.push(f32(f32((1 - t) * a) + f32(t * b)));
+                pc++;
+                break;
+            }
+            case 'Clamp': {
+                const hi = stack.pop()!;
+                const lo = stack.pop()!;
+                const x = stack.pop()!;
+                stack.push(f32(Math.min(Math.max(x, lo), hi)));
+                pc++;
+                break;
+            }
+            case 'Select': {
+                const b = stack.pop()!;
+                const a = stack.pop()!;
+                const x = stack.pop()!;
+                const edge = stack.pop()!;
+                stack.push(x < edge ? a : b);
+                pc++;
+                break;
+            }
 
             case 'Ret':
                 return stack[0];

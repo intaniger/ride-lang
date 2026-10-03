@@ -131,6 +131,11 @@ describe('implicit multiplication', () => {
         expect(run(await build('let main = 4(2 + 3)'))).toBe(20);
     });
 
+    test('a number next to a builtin call', async () => {
+        // 2*exp(0) = 2
+        expect(run(await build('let main = 2exp(0)'))).toBe(2);
+    });
+
     test('compiles to an ordinary multiply', async () => {
         const b = await build('let main = 3(4)');
         expect(b.code).toEqual([
@@ -165,9 +170,52 @@ describe('implicit multiplication', () => {
     });
 });
 
+describe('builtins', () => {
+    test('all twelve are callable with their declared arity', async () => {
+        expect(run(await build('let main = abs(-2)'))).toBe(2);
+        expect(run(await build('let main = sign(0)'))).toBe(0);
+        expect(run(await build('let main = sqrt(9)'))).toBe(3);
+        expect(run(await build('let main = max(2, 7)'))).toBe(7);
+        expect(run(await build('let main = min(2, 7)'))).toBe(2);
+        expect(run(await build('let main = step(10, 9)'))).toBe(0);
+        expect(run(await build('let main = step(10, 10)'))).toBe(1);
+        expect(run(await build('let main = mix(4, 8, 0.5)'))).toBe(6);
+        expect(run(await build('let main = clamp(12, 0, 10)'))).toBe(10);
+        expect(run(await build('let main = select(10, 5, 1, 2)'))).toBe(1);
+        expect(run(await build('let main = cos(0)'))).toBe(1);
+        expect(run(await build('let main = sin(0)'))).toBe(0);
+    });
+
+    test('a wrong argument count is refused', async () => {
+        expect(await errorsOf('let main = mix(1, 2)')).toEqual([
+            '`mix` takes 3 argument(s), got 2',
+        ]);
+    });
+
+    test('each builtin is one instruction, and the last argument is on top', async () => {
+        // Arguments are walked left to right, so mix(a, b, t) pushes a, b, t and then mixes.
+        expect((await build('let main = mix(1, 2, 3)')).code).toEqual([
+            { op: 'Push', value: 1 },
+            { op: 'Push', value: 2 },
+            { op: 'Push', value: 3 },
+            { op: 'Mix' },
+            { op: 'Ret' },
+        ]);
+    });
+
+    test('the transcendentals are computed in f64 and rounded to f32', async () => {
+        expect(run(await build('let main = sin(1)'))).toBe(Math.fround(Math.sin(1)));
+        expect(run(await build('let main = exp(1)'))).toBe(Math.fround(Math.exp(1)));
+    });
+});
+
 describe('diagnostics', () => {
     test('an unknown name', async () => {
         expect(await errorsOf('let main = nope')).toEqual(['unknown name `nope`']);
+    });
+
+    test('an unknown function', async () => {
+        expect(await errorsOf('let main = nope(1)')).toEqual(['unknown function `nope`']);
     });
 
     test('an unknown name inside an expression is one message, not a cascade', async () => {
